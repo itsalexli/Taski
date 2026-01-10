@@ -8,14 +8,23 @@
 import SwiftUI
 
 struct ContentView: View {
+    // Controls which view is visible to remove slide animation
+    @State private var showTaskScreen = false
+    
     var body: some View {
-        NavigationView {
-            ZStack{
-                Image("appbackground")
-                    .resizable()
-                    .scaledToFill()
-                    .ignoresSafeArea()
-                
+        ZStack {
+            // Persistent Background
+            Image("appbackground")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+            
+            if showTaskScreen {
+                // Pass the binding so TaskScreen can dismiss itself
+                TaskScreen(showTaskScreen: $showTaskScreen)
+                    .transition(.identity) // Ensures no animation occurs
+            } else {
+                // HOME SCREEN CONTENT
                 VStack(spacing: 30) {
                     Text("Taski")
                         .foregroundColor(.white)
@@ -23,7 +32,9 @@ struct ContentView: View {
                         .font(.title)
                         .offset(y: -300)
                     
-                    NavigationLink(destination: TaskScreen()) {
+                    Button(action: {
+                        showTaskScreen = true
+                    }) {
                         Text("Just Started")
                             .foregroundColor(.white)
                             .font(.headline)
@@ -41,13 +52,11 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .offset(y: -250)
                 }
+                .transition(.identity)
             }
         }
-        .transaction { $0.disablesAnimations = true }
     }
 }
-
-
 
 #Preview {
     ContentView()
