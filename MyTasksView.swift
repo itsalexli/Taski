@@ -6,6 +6,7 @@ struct MyTasksView: View {
     @State private var myTasks: [TaskItem] = []
     @State private var selectedTask: TaskItem? = nil
     @State private var userBalance: Double = 1250.00
+    @ObservedObject var solanaService: SolanaService
     
     // Timer for countdown
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -60,7 +61,6 @@ struct MyTasksView: View {
             }
             .blur(radius: selectedTask != nil ? 10 : 0)
             .disabled(selectedTask != nil)
-            
             // Task Action Popup
             if let task = selectedTask {
                 Color.black.opacity(0.4)
@@ -217,19 +217,17 @@ struct MyTasksView: View {
     }
     
     func loadMyTasks() {
+        // Load from saved data, or create demo data if empty
         if let data = UserDefaults.standard.data(forKey: "myTasks"),
-           let decoded = try? JSONDecoder().decode([TaskItem].self, from: data) {
+           let decoded = try? JSONDecoder().decode([TaskItem].self, from: data),
+           !decoded.isEmpty {
             myTasks = decoded
         } else {
-            // Dummy data for visualization since "myTasks" is currently empty
+            // Demo tasks - Task #3 exists on-chain with 0.001 SOL reward
             myTasks = [
-                TaskItem(title: "Completed Project A", price: "$200.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(-86400)),
-                TaskItem(title: "Consulting Gig", price: "$500.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 3))
+                TaskItem(title: "Blockchain Demo Task", price: "0.001 SOL", biddingDate: Date(), dueDate: Date().addingTimeInterval(-86400), onChainTaskId: 3)
             ]
-            // Save this dummy data so it persists
-            if let encoded = try? JSONEncoder().encode(myTasks) {
-                UserDefaults.standard.set(encoded, forKey: "myTasks")
-            }
+            saveMyTasks()
         }
     }
     
@@ -273,12 +271,9 @@ struct MyTasksView: View {
     }
     
     func completeTask(_ task: TaskItem) {
-        // Get task value
-        let priceString = task.price.replacingOccurrences(of: "$", with: "")
-        if let taskValue = Double(priceString) {
-            // Add to user balance
-            userBalance += taskValue
-            UserDefaults.standard.set(userBalance, forKey: "userBalance")
+        // Call blockchain payout using the task's on-chain ID
+        if let onChainId = task.onChainTaskId {
+            solanaService.completeAndPayout(taskId: onChainId, teamId: 1)
         }
         
         // Remove from myTasks
@@ -300,6 +295,6 @@ struct MyTasksView: View {
 #Preview {
     ZStack {
         Color.black // Preview background
-        MyTasksView()
+        MyTasksView(solanaService: SolanaService())
     }
 }
