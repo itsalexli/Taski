@@ -394,7 +394,7 @@ class SolanaService: ObservableObject {
             return false
         }
     }
-
+    
     @MainActor
     private func performFinalizeAuction(taskId: UInt64, teamId: UInt64) async {
         guard let keyPair = keyPair else { return }
@@ -434,7 +434,7 @@ class SolanaService: ObservableObject {
             print("⚠️ Finalize Skipped: \(error)") // Might already be finalized or open
         }
     }
-
+    
     @MainActor
     private func performAssignTask(taskId: UInt64, teamId: UInt64) async {
         guard let keyPair = keyPair else { return }
@@ -476,7 +476,7 @@ class SolanaService: ObservableObject {
             print("⚠️ Assign Skipped: \(error)")
         }
     }
-
+    
     @MainActor
     private func performMarkComplete(taskId: UInt64, teamId: UInt64) async {
         guard let keyPair = keyPair else { return }
@@ -517,7 +517,7 @@ class SolanaService: ObservableObject {
             print("⚠️ Mark Complete Skipped: \(error)")
         }
     }
-
+    
     @MainActor
     private func performCompleteAndPayout(taskId: UInt64, teamId: UInt64) async {
         isProcessing = true
@@ -538,3 +538,4 @@ class SolanaService: ObservableObject {
         
         isProcessing = false
     }
+}
