@@ -19,12 +19,16 @@ struct TaskScreen: View {
     @State private var bidInput: String = ""
     @State private var showBidError: Bool = false
     
-    // Timer updates the UI every second
+    // Sheet State for Adding Task
+    @State private var showAddTaskSheet = false
+    
+    // Timer
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var timeNow = Date()
     
     var body: some View {
         ZStack {
+            // MARK: Main Content
             VStack {
                 // Header
                 HStack {
@@ -52,6 +56,8 @@ struct TaskScreen: View {
                             TaskRow(task: task, currentTime: timeNow)
                                 .onTapGesture { openBidPopup(for: task) }
                         }
+                        // Spacer for FAB
+                        Color.clear.frame(height: 80)
                     }
                     .padding()
                 }
@@ -60,6 +66,27 @@ struct TaskScreen: View {
             .blur(radius: selectedTask != nil ? 5 : 0)
             .disabled(selectedTask != nil)
             
+            // MARK: - Floating Add Button
+            // Only show if no task is selected (popup is closed)
+            if selectedTask == nil {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Button(action: { showAddTaskSheet = true }) {
+                            Image(systemName: "plus.circle.fill")
+                                .resizable()
+                                .frame(width: 55, height: 55)
+                                .foregroundColor(.green)
+                                .background(Circle().fill(.white))
+                                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 4)
+                        }
+                        .padding(.trailing, 25)
+                        .padding(.bottom, 20)
+                    }
+                }
+            }
+
             // MARK: - Bidding Popup
             if let task = selectedTask {
                 Color.black.opacity(0.4)
@@ -110,12 +137,15 @@ struct TaskScreen: View {
             }
         }
         .onAppear(perform: loadTasks)
-        .onReceive(timer) { input in
-            timeNow = input
-        }
+        .onReceive(timer) { input in timeNow = input }
         .padding()
+        // Add Task Sheet
+        .sheet(isPresented: $showAddTaskSheet) {
+            AddTaskView(tasks: $tasks)
+        }
     }
     
+    // MARK: - Logic Functions
     func openBidPopup(for task: TaskItem) {
         selectedTask = task
         bidInput = ""
@@ -157,6 +187,7 @@ struct TaskScreen: View {
     }
 }
 
+// MARK: - Subviews
 struct TaskRow: View {
     let task: TaskItem
     var currentTime: Date = Date()
@@ -189,7 +220,6 @@ struct TaskRow: View {
                     
                     VStack(alignment: .leading) {
                         Text("Time Left").font(.caption).foregroundColor(.gray)
-                        // Updated to show Days : Hours : Minutes : Seconds
                         Text(getCountdownString(to: task.dueDate))
                             .font(.system(.subheadline, design: .monospaced))
                             .foregroundColor(.red.opacity(0.8))
@@ -206,21 +236,62 @@ struct TaskRow: View {
     
     func getCountdownString(to endDate: Date) -> String {
         let calendar = Calendar.current
-        
-        // Safety check: if time is up, show zeros
-        if currentTime >= endDate {
-            return "00d : 00h : 00m : 00s"
-        }
+        if currentTime >= endDate { return "00d : 00h : 00m : 00s" }
         
         let components = calendar.dateComponents([.day, .hour, .minute, .second], from: currentTime, to: endDate)
+        return String(format: "%02dd : %02dh : %02dm : %02ds", components.day ?? 0, components.hour ?? 0, components.minute ?? 0, components.second ?? 0)
+    }
+}
+
+struct AddTaskView: View {
+    @Environment(\.dismiss) var dismiss
+    @Binding var tasks: [TaskItem]
+    
+    @State private var title = ""
+    @State private var price = ""
+    @State private var dueDate = Date().addingTimeInterval(86400) // Default tomorrow
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Task Details")) {
+                    TextField("Task Title", text: $title)
+                    
+                    TextField("Price (e.g. 50.00)", text: $price)
+                        .keyboardType(.decimalPad)
+                    
+                    DatePicker("Due Date", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
+                }
+            }
+            .navigationTitle("Add New Task")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { saveTask() }
+                        .disabled(title.isEmpty || price.isEmpty)
+                }
+            }
+        }
+    }
+    
+    func saveTask() {
+        // Simple validation to ensure currency format
+        var finalPrice = price.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !finalPrice.hasPrefix("$") {
+            finalPrice = "$\(finalPrice)"
+        }
         
-        let days = components.day ?? 0
-        let hours = components.hour ?? 0
-        let minutes = components.minute ?? 0
-        let seconds = components.second ?? 0
+        let newTask = TaskItem(title: title, price: finalPrice, biddingDate: Date(), dueDate: dueDate)
+        tasks.append(newTask)
         
-        // Format: 02d : 12h : 30m : 45s
-        return String(format: "%02dd : %02dh : %02dm : %02ds", days, hours, minutes, seconds)
+        // Save to UserDefaults
+        if let encoded = try? JSONEncoder().encode(tasks) {
+            UserDefaults.standard.set(encoded, forKey: "savedTasks")
+        }
+        
+        dismiss()
     }
 }
 

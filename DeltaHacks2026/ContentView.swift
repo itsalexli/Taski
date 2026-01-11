@@ -47,6 +47,12 @@ struct ContentView: View {
             .ignoresSafeArea(edges: .bottom)
         }
         .onAppear(perform: loadPreviewTasks)
+        // Refresh data when switching back to Home to see newly added tasks
+        .onChange(of: selectedTab) { newValue in
+            if newValue == 0 {
+                loadPreviewTasks()
+            }
+        }
     }
     
     var homeView: some View {
@@ -62,7 +68,6 @@ struct ContentView: View {
                     .padding(.horizontal, 25)
                 
                 if !tasks.isEmpty {
-                    // Wrapper to clip the scrolling content to the screen width
                     InfiniteMarqueeView(tasks: tasks)
                         .frame(height: 100)
                         .clipped()
@@ -100,7 +105,6 @@ struct ContentView: View {
 struct InfiniteMarqueeView: View {
     let tasks: [TaskItem]
     @State private var offset: CGFloat = 0
-    @State private var contentWidth: CGFloat = 0
     
     var body: some View {
         GeometryReader { geometry in
@@ -121,10 +125,7 @@ struct InfiniteMarqueeView: View {
             .offset(x: offset)
             .onAppear {
                 // Animate smoothly to the left
-                // The duration is calculated based on width to ensure consistent speed
                 withAnimation(.linear(duration: Double(tasks.count) * 2.5).repeatForever(autoreverses: false)) {
-                    // Move exactly one set-width to the left
-                    // When the animation repeats, it snaps back to 0, creating a perfect loop
                     offset = -singleSetWidth
                 }
             }
@@ -149,8 +150,6 @@ struct TaskPreviewCard: View {
         .frame(width: 160)
         .background(.ultraThinMaterial)
         .cornerRadius(15)
-        // CRITICAL FIX: Compositing Group forces the text and background
-        // to be rendered as one single unit before animation moves it.
         .compositingGroup()
     }
 }
