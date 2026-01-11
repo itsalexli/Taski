@@ -234,6 +234,8 @@ struct TaskScreen: View {
               let currentPrice = Double(task.price.replacingOccurrences(of: "$", with: "")) else { return }
         
         if bidValue < currentPrice {
+            // Note: We deliberately do NOT decrease userBalance here.
+            // Bidding only updates the task price offer.
             updateTaskPrice(taskID: task.id, newPrice: bidValue)
             closePopup()
         } else { withAnimation { showBidError = true } }

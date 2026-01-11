@@ -123,7 +123,7 @@ struct ContentView: View {
                 if !tasks.isEmpty {
                     // Edge-to-edge marquee
                     InfiniteMarqueeView(tasks: tasks)
-                        .frame(height: 110)
+                        .frame(height: 140)
                 } else {
                     Text("No tasks available")
                         .font(.system(.subheadline, design: .rounded))
@@ -195,7 +195,8 @@ struct TaskPreviewCard: View {
             Text(task.title)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
-                .lineLimit(1)
+                .lineLimit(2) // Changed from 1 to 2
+                .fixedSize(horizontal: false, vertical: true) // Prevent truncation
             
             Text(task.price)
                 .font(.system(size: 14, weight: .heavy, design: .rounded))
