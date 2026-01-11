@@ -22,7 +22,7 @@ struct ContentView: View {
                         // TAB 2: Add / Available Tasks (Marketplace)
                         TaskScreen(showTaskScreen: .constant(true))
                     } else {
-                        Text("Data Analytics").foregroundColor(.white)
+                        DataScreen()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
