@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3E3C982F2F13611D00508596 /* SolanaSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 3E3C982E2F13611D00508596 /* SolanaSwift */; };
 		5A4A07522F1338B900FE5A5C /* MyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4A07512F1338B900FE5A5C /* MyTasksView.swift */; };
 		5A4A07542F134EC600FE5A5C /* SolanaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4A07532F134EC600FE5A5C /* SolanaService.swift */; };
 /* End PBXBuildFile section */
@@ -43,6 +44,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3E3C982F2F13611D00508596 /* SolanaSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,6 +89,7 @@
 			);
 			name = DeltaHacks2026;
 			packageProductDependencies = (
+				3E3C982E2F13611D00508596 /* SolanaSwift */,
 			);
 			productName = DeltaHacks2026;
 			productReference = 5A373BAE2F12EBD800FFBF2F /* DeltaHacks2026.app */;
@@ -116,6 +119,9 @@
 			);
 			mainGroup = 5A373BA52F12EBD800FFBF2F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3E3C982D2F13611D00508596 /* XCRemoteSwiftPackageReference "solana-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5A373BAF2F12EBD800FFBF2F /* Products */;
 			projectDirPath = "";
@@ -348,6 +354,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3E3C982D2F13611D00508596 /* XCRemoteSwiftPackageReference "solana-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/p2p-org/solana-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3E3C982E2F13611D00508596 /* SolanaSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3E3C982D2F13611D00508596 /* XCRemoteSwiftPackageReference "solana-swift" */;
+			productName = SolanaSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5A373BA62F12EBD800FFBF2F /* Project object */;
 }

@@ -13,6 +13,9 @@ struct TaskItem: Identifiable, Codable {
 struct TaskScreen: View {
     @Binding var showTaskScreen: Bool
     
+    // Inject Service
+    @ObservedObject var solanaService: SolanaService
+    
     @State private var tasks: [TaskItem] = []
     @State private var userBalance: Double = 1250.00
     @State private var selectedTask: TaskItem? = nil
@@ -237,6 +240,14 @@ struct TaskScreen: View {
             // Note: We deliberately do NOT decrease userBalance here.
             // Bidding only updates the task price offer.
             updateTaskPrice(taskID: task.id, newPrice: bidValue)
+            
+            // Blockchain Call
+            // Converting price to Lamports (approx 1 SOL = $100 for demo math, or just direct)
+            // For demo: treating bidValue as direct SOL amount if input is small, or mapped.
+            // Let's assume input is SOL for the blockchain call.
+            let lamports = UInt64(bidValue * 1_000_000_000)
+            solanaService.placeBid(lamports: lamports, taskId: 101, teamId: 1) // Hardcoded IDs for demo
+            
             closePopup()
         } else { withAnimation { showBidError = true } }
     }
@@ -469,5 +480,5 @@ struct AddTaskView: View {
 }
 
 #Preview {
-    TaskScreen(showTaskScreen: .constant(true))
+    TaskScreen(showTaskScreen: .constant(true), solanaService: SolanaService())
 }

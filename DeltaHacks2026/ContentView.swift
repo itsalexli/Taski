@@ -24,7 +24,7 @@ struct ContentView: View {
                         MyTasksView()
                     } else if selectedTab == 2 {
                         // TAB 2: Add / Available Tasks (Marketplace)
-                        TaskScreen(showTaskScreen: .constant(true))
+                        TaskScreen(showTaskScreen: .constant(true), solanaService: solanaService)
                     } else {
                         DataScreen()
                     }
