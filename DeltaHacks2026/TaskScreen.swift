@@ -11,7 +11,6 @@ struct TaskItem: Identifiable, Codable {
 }
 
 struct TaskScreen: View {
-    // This binding fixes the "Argument passed to call that takes no arguments" error
     @Binding var showTaskScreen: Bool
     
     @State private var tasks: [TaskItem] = []
@@ -20,10 +19,14 @@ struct TaskScreen: View {
     @State private var bidInput: String = ""
     @State private var showBidError: Bool = false
     
+    // Timer updates the UI every second
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var timeNow = Date()
+    
     var body: some View {
         ZStack {
             VStack {
-                // Header: Home button removed per request
+                // Header
                 HStack {
                     Spacer()
                     Text("Available Tasks")
@@ -31,7 +34,7 @@ struct TaskScreen: View {
                         .foregroundColor(.white)
                     Spacer()
                     
-                    // Balance: Formatted to 2 decimal places
+                    // Balance
                     Text(String(format: "$%.2f", userBalance))
                         .font(.subheadline)
                         .bold()
@@ -46,7 +49,7 @@ struct TaskScreen: View {
                 ScrollView {
                     VStack(spacing: 15) {
                         ForEach(tasks) { task in
-                            TaskRow(task: task)
+                            TaskRow(task: task, currentTime: timeNow)
                                 .onTapGesture { openBidPopup(for: task) }
                         }
                     }
@@ -77,7 +80,6 @@ struct TaskScreen: View {
                     TextField("0.00", text: $bidInput)
                         .keyboardType(.decimalPad)
                         .onChange(of: bidInput) { newValue in
-                            // Restrict to numbers and 2 decimal places
                             let filtered = newValue.filter { "0123456789.".contains($0) }
                             if filtered.contains(".") {
                                 let parts = filtered.components(separatedBy: ".")
@@ -108,6 +110,9 @@ struct TaskScreen: View {
             }
         }
         .onAppear(perform: loadTasks)
+        .onReceive(timer) { input in
+            timeNow = input
+        }
         .padding()
     }
     
@@ -124,7 +129,6 @@ struct TaskScreen: View {
               let currentPrice = Double(task.price.replacingOccurrences(of: "$", with: "")) else { return }
         
         if bidValue < currentPrice {
-            // Note: userBalance remains unchanged per request
             updateTaskPrice(taskID: task.id, newPrice: bidValue)
             closePopup()
         } else { showBidError = true }
@@ -145,9 +149,9 @@ struct TaskScreen: View {
             tasks = decoded
         } else {
             tasks = [
-                TaskItem(title: "Fix broken window", price: "$120.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 2)),
-                TaskItem(title: "Mow the lawn", price: "$45.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400)),
-                TaskItem(title: "Assemble IKEA Desk", price: "$60.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 5))
+                TaskItem(title: "Fix broken window", price: "$120.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 2 + 3600)),
+                TaskItem(title: "Mow the lawn", price: "$45.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 1 + 1800)),
+                TaskItem(title: "Assemble IKEA Desk", price: "$60.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 5 + 7200))
             ]
         }
     }
@@ -155,28 +159,68 @@ struct TaskScreen: View {
 
 struct TaskRow: View {
     let task: TaskItem
+    var currentTime: Date = Date()
+    
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(task.title).font(.title3).bold().foregroundColor(.white)
+            VStack(alignment: .leading, spacing: 12) {
+                // Title & Price
+                HStack(spacing: 10) {
+                    Text(task.title)
+                        .font(.title3)
+                        .bold()
+                        .foregroundColor(.white)
+                    
+                    Text(task.price)
+                        .font(.headline)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.green.opacity(0.8))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                
+                // Dates & Countdown
                 HStack(spacing: 20) {
                     VStack(alignment: .leading) {
                         Text("Bid by").font(.caption).foregroundColor(.gray)
                         Text(task.biddingDate, style: .date).font(.subheadline).foregroundColor(.white.opacity(0.9))
                     }
+                    
                     VStack(alignment: .leading) {
-                        Text("Due").font(.caption).foregroundColor(.gray)
-                        Text(task.dueDate, style: .date).font(.subheadline).foregroundColor(.white.opacity(0.9))
+                        Text("Time Left").font(.caption).foregroundColor(.gray)
+                        // Updated to show Days : Hours : Minutes : Seconds
+                        Text(getCountdownString(to: task.dueDate))
+                            .font(.system(.subheadline, design: .monospaced))
+                            .foregroundColor(.red.opacity(0.8))
+                            .bold()
                     }
                 }
             }
             Spacer()
-            Text(task.price).font(.headline).padding(.horizontal, 15).padding(.vertical, 10)
-                .background(Color.green.opacity(0.8)).foregroundColor(.white).cornerRadius(10)
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 20).fill(.ultraThinMaterial).overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.1), lineWidth: 1)))
         .contentShape(Rectangle())
+    }
+    
+    func getCountdownString(to endDate: Date) -> String {
+        let calendar = Calendar.current
+        
+        // Safety check: if time is up, show zeros
+        if currentTime >= endDate {
+            return "00d : 00h : 00m : 00s"
+        }
+        
+        let components = calendar.dateComponents([.day, .hour, .minute, .second], from: currentTime, to: endDate)
+        
+        let days = components.day ?? 0
+        let hours = components.hour ?? 0
+        let minutes = components.minute ?? 0
+        let seconds = components.second ?? 0
+        
+        // Format: 02d : 12h : 30m : 45s
+        return String(format: "%02dd : %02dh : %02dm : %02ds", days, hours, minutes, seconds)
     }
 }
 

@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5A4A07522F1338B900FE5A5C /* MyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4A07512F1338B900FE5A5C /* MyTasksView.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		5A373BAE2F12EBD800FFBF2F /* DeltaHacks2026.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeltaHacks2026.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A4A07512F1338B900FE5A5C /* MyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyTasksView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +37,7 @@
 		5A373BA52F12EBD800FFBF2F = {
 			isa = PBXGroup;
 			children = (
+				5A4A07512F1338B900FE5A5C /* MyTasksView.swift */,
 				5A373BB02F12EBD800FFBF2F /* DeltaHacks2026 */,
 				5A373BAF2F12EBD800FFBF2F /* Products */,
 			);
@@ -119,6 +125,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A4A07522F1338B900FE5A5C /* MyTasksView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

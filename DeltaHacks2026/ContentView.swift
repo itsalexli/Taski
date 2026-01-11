@@ -13,10 +13,17 @@ struct ContentView: View {
             
             VStack(spacing: 0) {
                 ZStack {
-                    if selectedTab == 0 { homeView }
-                    else if selectedTab == 1 { TaskScreen(showTaskScreen: .constant(true)) }
-                    else if selectedTab == 2 { Text("Add Task Screen").foregroundColor(.white) }
-                    else { Text("Data Analytics").foregroundColor(.white) }
+                    if selectedTab == 0 {
+                        homeView
+                    } else if selectedTab == 1 {
+                        // TAB 1: My Tasks (Read-only)
+                        MyTasksView()
+                    } else if selectedTab == 2 {
+                        // TAB 2: Add / Available Tasks (Marketplace)
+                        TaskScreen(showTaskScreen: .constant(true))
+                    } else {
+                        Text("Data Analytics").foregroundColor(.white)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
@@ -25,9 +32,9 @@ struct ContentView: View {
                     Spacer()
                     navButton(icon: "house.fill", label: "Home", index: 0)
                     Spacer()
-                    navButton(icon: "checklist", label: "Tasks", index: 1) // Swapped
+                    navButton(icon: "checklist", label: "My Tasks", index: 1)
                     Spacer()
-                    navButton(icon: "plus.circle.fill", label: "Add", index: 2) // Swapped
+                    navButton(icon: "plus.circle.fill", label: "Add", index: 2)
                     Spacer()
                     navButton(icon: "chart.bar.fill", label: "Data", index: 3)
                     Spacer()
@@ -49,18 +56,21 @@ struct ContentView: View {
             
             // Preview Section
             VStack(alignment: .leading, spacing: 10) {
-                Text("Quick Preview").font(.headline).foregroundColor(.white).padding(.horizontal, 25)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 15) {
-                        ForEach(tasks.prefix(3)) { task in
-                            VStack(alignment: .leading) {
-                                Text(task.title).bold().foregroundColor(.white).lineLimit(1)
-                                Text(task.price).foregroundColor(.green).font(.subheadline)
-                            }
-                            .padding().frame(width: 160).background(.ultraThinMaterial).cornerRadius(15)
-                        }
-                    }
+                Text("Quick Preview")
+                    .font(.headline)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 25)
+                
+                if !tasks.isEmpty {
+                    // Wrapper to clip the scrolling content to the screen width
+                    InfiniteMarqueeView(tasks: tasks)
+                        .frame(height: 100)
+                        .clipped()
+                } else {
+                    Text("No tasks available")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                        .padding(.horizontal, 25)
                 }
             }
             .padding(.bottom, 60)
@@ -82,6 +92,66 @@ struct ContentView: View {
            let decoded = try? JSONDecoder().decode([TaskItem].self, from: data) {
             tasks = decoded
         }
+    }
+}
+
+// MARK: - Infinite Scrolling Components
+
+struct InfiniteMarqueeView: View {
+    let tasks: [TaskItem]
+    @State private var offset: CGFloat = 0
+    @State private var contentWidth: CGFloat = 0
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let cardWidth: CGFloat = 160
+            let spacing: CGFloat = 15
+            // Total width of one "set" of data
+            let singleSetWidth = Double(tasks.count) * (cardWidth + spacing)
+            
+            // We use HStack instead of ScrollView to lock layout
+            HStack(spacing: 15) {
+                // Duplicate the data enough times to fill the screen + buffer for looping
+                ForEach(0..<10, id: \.self) { _ in
+                    ForEach(Array(tasks.enumerated()), id: \.offset) { _, task in
+                        TaskPreviewCard(task: task)
+                    }
+                }
+            }
+            .offset(x: offset)
+            .onAppear {
+                // Animate smoothly to the left
+                // The duration is calculated based on width to ensure consistent speed
+                withAnimation(.linear(duration: Double(tasks.count) * 2.5).repeatForever(autoreverses: false)) {
+                    // Move exactly one set-width to the left
+                    // When the animation repeats, it snaps back to 0, creating a perfect loop
+                    offset = -singleSetWidth
+                }
+            }
+        }
+    }
+}
+
+struct TaskPreviewCard: View {
+    let task: TaskItem
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(task.title)
+                .bold()
+                .foregroundColor(.white)
+                .lineLimit(1)
+            Text(task.price)
+                .foregroundColor(.green)
+                .font(.subheadline)
+        }
+        .padding()
+        .frame(width: 160)
+        .background(.ultraThinMaterial)
+        .cornerRadius(15)
+        // CRITICAL FIX: Compositing Group forces the text and background
+        // to be rendered as one single unit before animation moves it.
+        .compositingGroup()
     }
 }
 
