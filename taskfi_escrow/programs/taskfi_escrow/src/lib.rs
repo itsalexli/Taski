@@ -76,19 +76,55 @@ pub mod taskfi_escrow {
 
         Ok(())
     }
-    pub fn create_task(ctx: Context<CreateTask>, task_id: u64, reward_lamports: u64) -> Result<()> {
-        require!(reward_lamports > 0, EscrowError::InvalidAmount);
+    pub fn create_task_auction(
+        ctx: Context<CreateTask>,
+        task_id: u64,
+        reserve_reward_lamports: u64,
+        auction_end_ts: i64,
+    ) -> Result<()> {
+        require!(reserve_reward_lamports > 0, EscrowError::InvalidAmount);
+    
+        // time check (end must be in the future)
+        let now = Clock::get()?.unix_timestamp;
+        require!(auction_end_ts > now, EscrowError::InvalidAuctionEndTime);
     
         let task = &mut ctx.accounts.task;
         task.team = ctx.accounts.team.key();
         task.task_id = task_id;
         task.creator = ctx.accounts.authority.key();
+    
+        task.reserve_reward_lamports = reserve_reward_lamports;
+        task.auction_end_ts = auction_end_ts;
+    
+        task.best_bid_lamports = reserve_reward_lamports;
+        task.best_bidder = Pubkey::default();
+    
         task.assignee = Pubkey::default();
-        task.reward_lamports = reward_lamports;
-        task.status = TaskStatus::Open as u8;
+        task.reward_lamports = 0; // not decided until finalize
+    
+        task.status = TaskStatus::Bidding as u8;
+    
+        Ok(())
+    }    
+
+    pub fn place_bid(ctx: Context<PlaceBid>, bid_lamports: u64) -> Result<()> {
+        let task = &mut ctx.accounts.task;
+    
+        require!(task.status == TaskStatus::Bidding as u8, EscrowError::TaskNotBidding);
+    
+        let now = Clock::get()?.unix_timestamp;
+        require!(now < task.auction_end_ts, EscrowError::AuctionClosed);
+    
+        // reverse auction: must be strictly lower than current best
+        require!(bid_lamports > 0, EscrowError::InvalidAmount);
+        require!(bid_lamports < task.best_bid_lamports, EscrowError::BidNotLowEnough);
+    
+        task.best_bid_lamports = bid_lamports;
+        task.best_bidder = ctx.accounts.bidder.key();
     
         Ok(())
     }
+    
     
     pub fn assign_task(ctx: Context<AssignTask>) -> Result<()> {
         let task = &mut ctx.accounts.task;
@@ -103,10 +139,35 @@ pub mod taskfi_escrow {
         let task = &mut ctx.accounts.task;
         require!(task.status == TaskStatus::Assigned as u8, EscrowError::InvalidTaskState);
         require!(task.assignee == ctx.accounts.assignee.key(), EscrowError::NotAssignee);
+
     
         task.status = TaskStatus::Completed as u8;
         Ok(())
     }
+
+    pub fn finalize_auction(ctx: Context<FinalizeAuction>) -> Result<()> {
+        let task = &mut ctx.accounts.task;
+    
+        require!(task.status == TaskStatus::Bidding as u8, EscrowError::TaskNotBidding);
+    
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= task.auction_end_ts, EscrowError::AuctionNotClosed);
+    
+        // If no one bid, best_bidder will be default
+        if task.best_bidder == Pubkey::default() {
+            // “no bids” behavior:
+            // Option 1: leave unassigned but end bidding
+            task.status = TaskStatus::Open as u8;
+            task.reward_lamports = task.reserve_reward_lamports; // keep as suggested reward
+            return Ok(());
+        }
+    
+        task.assignee = task.best_bidder;
+        task.reward_lamports = task.best_bid_lamports;
+        task.status = TaskStatus::Assigned as u8;
+    
+        Ok(())
+    }    
     
     pub fn payout_task(ctx: Context<PayoutTask>) -> Result<()> {
         let task = &mut ctx.accounts.task;
@@ -196,6 +257,30 @@ pub struct Deposit<'info> {
 
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FinalizeAuction<'info> {
+    pub team: Account<'info, Team>,
+
+    #[account(
+        mut,
+        constraint = task.team == team.key() @ EscrowError::TaskTeamMismatch
+    )]
+    pub task: Account<'info, Task>,
+}
+
+#[derive(Accounts)]
+pub struct PlaceBid<'info> {
+    pub team: Account<'info, Team>,
+
+    #[account(
+        mut,
+        constraint = task.team == team.key() @ EscrowError::TaskTeamMismatch
+    )]
+    pub task: Account<'info, Task>,
+
+    pub bidder: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -334,15 +419,31 @@ pub enum EscrowError {
 
     #[msg("Recipient must be the task assignee.")]
     RecipientNotAssignee,
+
+    #[msg("Auction end time must be in the future.")]
+    InvalidAuctionEndTime,
+
+    #[msg("Task is not currently in bidding.")]
+    TaskNotBidding,
+
+    #[msg("Auction has already closed.")]
+    AuctionClosed,
+
+    #[msg("Auction has not closed yet.")]
+    AuctionNotClosed,
+
+    #[msg("Bid must be lower than the current best bid.")]
+    BidNotLowEnough,
 }
 
 #[repr(u8)]
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
 pub enum TaskStatus {
-    Open = 0,
-    Assigned = 1,
-    Completed = 2,
-    Paid = 3,
+    Open = 0,        // manual tasks (optional)
+    Bidding = 1,     // reverse auction live
+    Assigned = 2,    // winner assigned
+    Completed = 3,
+    Paid = 4,
 }
 
 #[account]
@@ -350,9 +451,20 @@ pub struct Task {
     pub team: Pubkey,
     pub task_id: u64,
     pub creator: Pubkey,
-    pub assignee: Pubkey,       // Pubkey::default() when unassigned
-    pub reward_lamports: u64,
-    pub status: u8,             // stores TaskStatus as u8
+
+    // Auction config
+    pub reserve_reward_lamports: u64, // “suggested reward / max payout”
+    pub auction_end_ts: i64,          // unix timestamp (seconds)
+
+    // Current best (lowest) bid
+    pub best_bid_lamports: u64,       // initialize to reserve_reward_lamports
+    pub best_bidder: Pubkey,          // default = Pubkey::default()
+
+    // Winner + payout
+    pub assignee: Pubkey,             // set at finalize
+    pub reward_lamports: u64,         // set to best_bid_lamports at finalize (or reserve if no bids)
+
+    pub status: u8,                   // TaskStatus as u8
 }
 
 impl Task {
@@ -360,6 +472,10 @@ impl Task {
         32 + // team
         8  + // task_id
         32 + // creator
+        8  + // reserve_reward_lamports
+        8  + // auction_end_ts
+        8  + // best_bid_lamports
+        32 + // best_bidder
         32 + // assignee
         8  + // reward_lamports
         1;   // status

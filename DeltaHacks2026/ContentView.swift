@@ -3,6 +3,10 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0 // 0: Home, 1: Tasks, 2: Add, 3: Data
     @State private var tasks: [TaskItem] = []
+    
+    // Solana Service for blockchain interaction
+    @StateObject private var solanaService = SolanaService()
+    @State private var showDepositAlert = false
 
     var body: some View {
         ZStack {
@@ -43,55 +47,102 @@ struct ContentView: View {
                 .padding(.bottom, 35)
                 .background(.ultraThinMaterial)
                 .overlay(Rectangle().frame(height: 0.5).foregroundColor(.white.opacity(0.2)), alignment: .top)
-                
             }
             .ignoresSafeArea(edges: .bottom)
-            
-            
         }
         .onAppear(perform: loadPreviewTasks)
-        // Refresh data when switching back to Home to see newly added tasks
         .onChange(of: selectedTab) { newValue in
             if newValue == 0 {
-                loadPreviewTasks()
+                loadPreviewTasks() // Refresh data when switching back to Home
             }
+        }
+        .alert(isPresented: $showDepositAlert) {
+            Alert(
+                title: Text("Solana Escrow"),
+                message: Text(solanaService.statusMessage),
+                dismissButton: .default(Text("OK"))
+            )
         }
     }
     
     var homeView: some View {
-        VStack(spacing: 30) {
-            Text("Taski").foregroundColor(.white).bold().font(.largeTitle).padding(.top, 100)
+        VStack(spacing: 40) {
+            // Header Title aligned with app-wide padding
+            Text("Taski")
+                .foregroundColor(.white)
+                .font(.system(size: 50, weight: .bold, design: .rounded))
+                .padding(.top, 80)
+                .padding(.horizontal, 35)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 123)
+            
             Spacer()
             
+            // MARK: - Styled Solana Deposit Button
+            VStack(spacing: 12) {
+                Button(action: {
+                    solanaService.depositSOL(amount: 0.5, teamId: 1)
+                    showDepositAlert = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "bitcoinsign.circle.fill")
+                            .font(.title3)
+                        Text(solanaService.isProcessing ? "Processing..." : "Deposit 0.5 SOL to Vault")
+                            .font(.system(.headline, design: .rounded))
+                            .bold()
+                    }
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: .infinity)
+                    // Changed to Green Gradient to match TaskRow accent colors
+                    .background(
+                        LinearGradient(
+                            colors: [.green, Color(red: 0.0, green: 0.8, blue: 0.4)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .foregroundColor(.black) // Dark text for better contrast on green
+                    .cornerRadius(20)
+                    .shadow(color: .green.opacity(0.3), radius: 10, x: 0, y: 5)
+                }
+                .disabled(solanaService.isProcessing)
+                .padding(.horizontal, 35)
+                
+                Text("Escrow Vault PDA Connection Active")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            
             // Preview Section
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 20) {
                 Text("Quick Preview")
-                    .font(.headline)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 25)
+                    .padding(.horizontal, 35)
                 
                 if !tasks.isEmpty {
+                    // Edge-to-edge marquee
                     InfiniteMarqueeView(tasks: tasks)
-                        .frame(height: 100)
-                        .clipped()
+                        .frame(height: 110)
                 } else {
                     Text("No tasks available")
-                        .font(.caption)
+                        .font(.system(.subheadline, design: .rounded))
                         .foregroundColor(.white.opacity(0.5))
-                        .padding(.horizontal, 25)
+                        .padding(.horizontal, 35)
+                        .padding(.bottom, 20)
                 }
             }
             .padding(.bottom, 60)
-            .padding()
         }
-        .padding()
     }
     
     func navButton(icon: String, label: String, index: Int) -> some View {
         Button(action: { selectedTab = index }) {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 22))
-                Text(label).font(.system(size: 10))
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: selectedTab == index ? .bold : .regular))
+                Text(label)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
             }
         }
         .foregroundColor(selectedTab == index ? .white : .white.opacity(0.4))
@@ -105,32 +156,30 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Infinite Scrolling Components
+// MARK: - Consistent Marquee Components
 
 struct InfiniteMarqueeView: View {
     let tasks: [TaskItem]
     @State private var offset: CGFloat = 0
     
     var body: some View {
-        GeometryReader { geometry in
-            let cardWidth: CGFloat = 160
-            let spacing: CGFloat = 15
-            // Total width of one "set" of data
+        GeometryReader { _ in
+            let cardWidth: CGFloat = 170
+            let spacing: CGFloat = 18
             let singleSetWidth = Double(tasks.count) * (cardWidth + spacing)
             
-            // We use HStack instead of ScrollView to lock layout
-            HStack(spacing: 15) {
-                // Duplicate the data enough times to fill the screen + buffer for looping
+            HStack(spacing: spacing) {
                 ForEach(0..<10, id: \.self) { _ in
                     ForEach(Array(tasks.enumerated()), id: \.offset) { _, task in
                         TaskPreviewCard(task: task)
+                            .frame(width: cardWidth)
                     }
                 }
             }
             .offset(x: offset)
             .onAppear {
-                // Animate smoothly to the left
-                withAnimation(.linear(duration: Double(tasks.count) * 2.5).repeatForever(autoreverses: false)) {
+                // Ensure a smooth continuous loop
+                withAnimation(.linear(duration: Double(tasks.count) * 3.0).repeatForever(autoreverses: false)) {
                     offset = -singleSetWidth
                 }
             }
@@ -142,19 +191,24 @@ struct TaskPreviewCard: View {
     let task: TaskItem
     
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(task.title)
-                .bold()
+                .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1)
+            
             Text(task.price)
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundColor(.green)
-                .font(.subheadline)
         }
-        .padding()
-        .frame(width: 160)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial)
-        .cornerRadius(15)
+        .cornerRadius(20)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
         .compositingGroup()
     }
 }

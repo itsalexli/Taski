@@ -8,16 +8,31 @@
 
 /* Begin PBXBuildFile section */
 		5A4A07522F1338B900FE5A5C /* MyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4A07512F1338B900FE5A5C /* MyTasksView.swift */; };
+		5A4A07542F134EC600FE5A5C /* SolanaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4A07532F134EC600FE5A5C /* SolanaService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		5A373BAE2F12EBD800FFBF2F /* DeltaHacks2026.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeltaHacks2026.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A4A07512F1338B900FE5A5C /* MyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyTasksView.swift; sourceTree = "<group>"; };
+		5A4A07532F134EC600FE5A5C /* SolanaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolanaService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3E3C981F2F13553E00508596 /* Exceptions for "DeltaHacks2026" folder in "DeltaHacks2026" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A373BAD2F12EBD800FFBF2F /* DeltaHacks2026 */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5A373BB02F12EBD800FFBF2F /* DeltaHacks2026 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3E3C981F2F13553E00508596 /* Exceptions for "DeltaHacks2026" folder in "DeltaHacks2026" target */,
+			);
 			path = DeltaHacks2026;
 			sourceTree = "<group>";
 		};
@@ -37,6 +52,7 @@
 		5A373BA52F12EBD800FFBF2F = {
 			isa = PBXGroup;
 			children = (
+				5A4A07532F134EC600FE5A5C /* SolanaService.swift */,
 				5A4A07512F1338B900FE5A5C /* MyTasksView.swift */,
 				5A373BB02F12EBD800FFBF2F /* DeltaHacks2026 */,
 				5A373BAF2F12EBD800FFBF2F /* Products */,
@@ -125,6 +141,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A4A07542F134EC600FE5A5C /* SolanaService.swift in Sources */,
 				5A4A07522F1338B900FE5A5C /* MyTasksView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -261,6 +278,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"DeltaHacks2026/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DeltaHacks2026/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -289,6 +307,7 @@
 				DEVELOPMENT_ASSET_PATHS = "\"DeltaHacks2026/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DeltaHacks2026/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -371,7 +371,7 @@ struct AddTaskView: View {
                 Text("New Task Offering")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
-                    .padding(.top, 20)
+                    .padding(.top, 40)
                 
                 Divider().background(Color.white.opacity(0.3))
                 
