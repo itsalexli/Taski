@@ -10,8 +10,9 @@ struct TaskItem: Identifiable, Codable {
     var biddingDate: Date
     var dueDate: Date
     var isUserLastBidder: Bool = false
+    var onChainTaskId: UInt64? = nil  // Maps to blockchain task
     
-    // Custom decoding to handle legacy data without 'isUserLastBidder'
+    // Custom decoding to handle legacy data
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -20,16 +21,18 @@ struct TaskItem: Identifiable, Codable {
         biddingDate = try container.decode(Date.self, forKey: .biddingDate)
         dueDate = try container.decode(Date.self, forKey: .dueDate)
         isUserLastBidder = try container.decodeIfPresent(Bool.self, forKey: .isUserLastBidder) ?? false
+        onChainTaskId = try container.decodeIfPresent(UInt64.self, forKey: .onChainTaskId)
     }
     
     // Memberwise init needed since we added custom init
-    init(id: UUID = UUID(), title: String, price: String, biddingDate: Date, dueDate: Date, isUserLastBidder: Bool = false) {
+    init(id: UUID = UUID(), title: String, price: String, biddingDate: Date, dueDate: Date, isUserLastBidder: Bool = false, onChainTaskId: UInt64? = nil) {
         self.id = id
         self.title = title
         self.price = price
         self.biddingDate = biddingDate
         self.dueDate = dueDate
         self.isUserLastBidder = isUserLastBidder
+        self.onChainTaskId = onChainTaskId
     }
 }
 
@@ -233,7 +236,7 @@ struct TaskScreen: View {
         }
         .padding(0)
         .sheet(isPresented: $showAddTaskSheet) {
-            AddTaskView(tasks: $tasks)
+            AddTaskView(tasks: $tasks, solanaService: solanaService)
         }
     }
     
@@ -339,9 +342,9 @@ struct TaskScreen: View {
         } else {
             // NOTE: Fallback defaults if decode fails or empty
             tasks = [
-                TaskItem(title: "Fix broken window", price: "$120.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 2 + 3600)),
-                TaskItem(title: "Mow the lawn", price: "$45.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 1 + 1800)),
-                TaskItem(title: "Assemble IKEA Desk", price: "$60.00", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 5 + 7200))
+                TaskItem(title: "Fix broken window", price: "0.05 SOL", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 2 + 3600)),
+                TaskItem(title: "Mow the lawn", price: "0.02 SOL", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 1 + 1800)),
+                TaskItem(title: "Assemble IKEA Desk", price: "0.03 SOL", biddingDate: Date(), dueDate: Date().addingTimeInterval(86400 * 5 + 7200))
             ]
             // Save defaults immediately so ContentView can see them
             if let encoded = try? JSONEncoder().encode(tasks) {
@@ -470,6 +473,7 @@ struct TaskRow: View {
 struct AddTaskView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var tasks: [TaskItem]
+    @ObservedObject var solanaService: SolanaService
     
     @State private var title = ""
     @State private var price = ""
@@ -570,11 +574,45 @@ struct AddTaskView: View {
     
     func saveTask() {
         var finalPrice = price.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !finalPrice.hasPrefix("$") { finalPrice = "$\(finalPrice)" }
-        let newTask = TaskItem(title: title, price: finalPrice, biddingDate: Date(), dueDate: dueDate)
-        tasks.append(newTask)
-        if let encoded = try? JSONEncoder().encode(tasks) { UserDefaults.standard.set(encoded, forKey: "savedTasks") }
-        dismiss()
+        if !finalPrice.hasSuffix("SOL") { finalPrice = "\(finalPrice) SOL" }
+        
+        // Parse SOL amount for blockchain
+        let solString = finalPrice.replacingOccurrences(of: " SOL", with: "")
+        let solAmount = Double(solString) ?? 0.01 // Default to 0.01 if parse fails
+        let lamports = UInt64(solAmount * 1_000_000_000)
+        
+        // Generate unique Task ID
+        let taskId = UInt64(Date().timeIntervalSince1970)
+        
+        print("🚀 Creating Task #\(taskId) for \(lamports) lamports...")
+        
+        Task {
+            // Create on blockchain (short 5s auction for demo)
+            let success = await solanaService.createTask(taskId: taskId, rewardLamports: lamports, teamId: 1, auctionDurationSeconds: 5)
+            
+            await MainActor.run {
+                if success {
+                    let newTask = TaskItem(title: title, price: finalPrice, biddingDate: Date(), dueDate: dueDate, onChainTaskId: taskId)
+                    tasks.append(newTask)
+                    if let encoded = try? JSONEncoder().encode(tasks) { UserDefaults.standard.set(encoded, forKey: "savedTasks") }
+                    
+                    // Demo: Also add to "My Tasks" so we can complete it immediately
+                    var myTasksList: [TaskItem] = []
+                    if let data = UserDefaults.standard.data(forKey: "myTasks"),
+                       let decoded = try? JSONDecoder().decode([TaskItem].self, from: data) {
+                        myTasksList = decoded
+                    }
+                    myTasksList.append(newTask)
+                    if let encoded = try? JSONEncoder().encode(myTasksList) { UserDefaults.standard.set(encoded, forKey: "myTasks") }
+                    
+                    dismiss()
+                } else {
+                    // Start simple: just dismiss but log error (in real app, show alert)
+                    print("Could not create task on chain")
+                    dismiss()
+                }
+            }
+        }
     }
 }
 

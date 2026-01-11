@@ -7,6 +7,7 @@ struct ContentView: View {
     // Solana Service for blockchain interaction
     @StateObject private var solanaService = SolanaService()
     @State private var showDepositAlert = false
+    @State private var depositAmount: String = "0.01"
 
     var body: some View {
         ZStack {
@@ -21,7 +22,7 @@ struct ContentView: View {
                         homeView
                     } else if selectedTab == 1 {
                         // TAB 1: My Tasks (Read-only)
-                        MyTasksView()
+                        MyTasksView(solanaService: solanaService)
                     } else if selectedTab == 2 {
                         // TAB 2: Add / Available Tasks (Marketplace)
                         TaskScreen(showTaskScreen: .constant(true), solanaService: solanaService)
@@ -66,34 +67,86 @@ struct ContentView: View {
     }
     
     var homeView: some View {
-        VStack(spacing: 40) {
-            // Header Title aligned with app-wide padding
+        VStack(spacing: 25) {
+            // Header Title - centered
             Text("Taski")
                 .foregroundColor(.white)
                 .font(.system(size: 50, weight: .bold, design: .rounded))
-                .padding(.top, 80)
-                .padding(.horizontal, 35)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 123)
+                .padding(.top, 60)
+                .frame(maxWidth: .infinity, alignment: .center)
             
-            Spacer()
+            // MARK: - Balance Cards
+            HStack(spacing: 15) {
+                // Wallet Balance Card
+                VStack(spacing: 8) {
+                    Text("💳 Wallet")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.7))
+                    Text("\(String(format: "%.6f", solanaService.balance)) SOL")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(.ultraThinMaterial)
+                .cornerRadius(16)
+                
+                // Vault Balance Card
+                VStack(spacing: 8) {
+                    Text("🔐 Vault")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.7))
+                    Text("\(String(format: "%.6f", solanaService.vaultBalance)) SOL")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(.green)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(.ultraThinMaterial)
+                .cornerRadius(16)
+            }
+            .padding(.horizontal, 35)
             
-            // MARK: - Styled Solana Deposit Button
-            VStack(spacing: 12) {
+            // MARK: - Deposit Section
+            VStack(spacing: 16) {
+                // Amount Input
+                HStack {
+                    Text("Amount:")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.7))
+                    
+                    TextField("0.01", text: $depositAmount)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .frame(width: 100)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(12)
+                    
+                    Text("SOL")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                
+                // Deposit Button
                 Button(action: {
-                    solanaService.depositSOL(amount: 0.5, teamId: 1)
-                    showDepositAlert = true
+                    if let amount = Double(depositAmount), amount > 0 {
+                        solanaService.depositSOL(amount: amount, teamId: 1)
+                        showDepositAlert = true
+                    }
                 }) {
                     HStack(spacing: 12) {
-                        Image(systemName: "bitcoinsign.circle.fill")
+                        Image(systemName: "arrow.up.circle.fill")
                             .font(.title3)
-                        Text(solanaService.isProcessing ? "Processing..." : "Deposit 0.5 SOL to Vault")
+                        Text(solanaService.isProcessing ? "Processing..." : "Deposit to Vault")
                             .font(.system(.headline, design: .rounded))
                             .bold()
                     }
                     .padding(.vertical, 18)
                     .frame(maxWidth: .infinity)
-                    // Changed to Green Gradient to match TaskRow accent colors
                     .background(
                         LinearGradient(
                             colors: [.green, Color(red: 0.0, green: 0.8, blue: 0.4)],
@@ -101,17 +154,18 @@ struct ContentView: View {
                             endPoint: .trailing
                         )
                     )
-                    .foregroundColor(.black) // Dark text for better contrast on green
+                    .foregroundColor(.black)
                     .cornerRadius(20)
                     .shadow(color: .green.opacity(0.3), radius: 10, x: 0, y: 5)
                 }
                 .disabled(solanaService.isProcessing)
                 .padding(.horizontal, 35)
                 
-                Text("Escrow Vault PDA Connection Active")
+                Text(solanaService.statusMessage)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.white.opacity(0.5))
             }
+            .padding(.top, 10)
             
             // Preview Section
             VStack(alignment: .leading, spacing: 20) {
