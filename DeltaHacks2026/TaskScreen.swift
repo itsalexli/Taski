@@ -72,20 +72,38 @@ struct TaskScreen: View {
                     
                     Spacer()
                     
-                    // Wallet Badge
-                    HStack(spacing: 8) {
-                        Image(systemName: "wallet.pass.fill")
-                            .foregroundColor(.green)
-                        Text(String(format: "$%.2f", userBalance))
-                            .font(.system(.subheadline, design: .rounded))
-                            .bold()
-                            .foregroundColor(.white)
+                    VStack(alignment: .trailing, spacing: 8) {
+                        // Wallet Badge
+                        HStack(spacing: 6) {
+                            Image(systemName: "wallet.pass.fill")
+                                .foregroundColor(.green)
+                                .font(.caption)
+                            Text(String(format: "$%.2f (%.2f SOL)", solanaService.balance * 189.0, solanaService.balance))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.green.opacity(0.3), lineWidth: 1))
+                        .onTapGesture {
+                            Task { await solanaService.requestAirdrop(amount: 2.0) }
+                        }
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    
+                    // Refresh Button
+                    Button(action: {
+                        Task { await solanaService.updateBalance() }
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .bold)) 
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
                 }
                 .padding(.horizontal, 25) // Increased padding
                 .padding(.top, 10)
@@ -107,7 +125,28 @@ struct TaskScreen: View {
             }
             .blur(radius: selectedTask != nil ? 10 : 0)
             .disabled(selectedTask != nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
+            .ignoresSafeArea(.keyboard, edges: .bottom) // Fix: Prevent list resizing when keyboard opens
+            
+            // Global Loading Overlay for Blockchain Actions (Airdrop, etc.)
+            if solanaService.isProcessing {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.white)
+                        Text(solanaService.statusMessage)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(30)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(20)
+                }
+                .zIndex(100)
+            }
             
             // MARK: - Floating Add Button
             if selectedTask == nil {
@@ -136,7 +175,7 @@ struct TaskScreen: View {
             // MARK: - Bidding Popup
             if let task = selectedTask {
                 Color.black.opacity(0.6)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea() // Fix: Cover entire screen including safe areas
                     .onTapGesture { closePopup() }
                 
                 VStack(spacing: 25) {
@@ -159,29 +198,47 @@ struct TaskScreen: View {
                         VStack(alignment: .leading) {
                             Text("Current Price")
                                 .font(.caption).foregroundColor(.gray)
-                            Text(task.price)
-                                .font(.title3).bold().foregroundColor(.green)
+                            let components = getPriceComponents(task.price)
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(components.usd)
+                                    .font(.title3).bold().foregroundColor(.green)
+                                Text(components.sol)
+                                    .font(.caption).foregroundColor(.gray)
+                            }
                         }
                         Spacer()
                         VStack(alignment: .trailing) {
                             Text("Your Balance")
                                 .font(.caption).foregroundColor(.gray)
-                            Text(String(format: "$%.2f", userBalance))
+                            Text(String(format: "$%.2f", solanaService.balance * 189.0))
                                 .font(.title3).bold().foregroundColor(.white)
                         }
                     }
                     
-                    // Input Field
-                    TextField("0.00", text: $bidInput)
-                        .keyboardType(.decimalPad)
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .background(RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.1)))
-                        .foregroundColor(.white)
-                        .onChange(of: bidInput) { newValue in
-                            filterDecimalInput(newValue: newValue, binding: $bidInput)
-                        }
+                    // Input Field (USD)
+                    HStack(spacing: 4) {
+                        Text("$")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        TextField("0.00", text: $bidInput)
+                            .keyboardType(.decimalPad)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .multilineTextAlignment(.leading) // Align left to sit next to "$"
+                            .foregroundColor(.white)
+                            .onChange(of: bidInput) { newValue in
+                                filterDecimalInput(newValue: newValue, binding: $bidInput)
+                            }
+                    }
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.1)))
+                    
+                    // Show conversion for clarity
+                    if let usd = Double(bidInput) {
+                        Text(String(format: "≈ %.4f SOL", usd / 189.0))
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
                     
                     if showBidError {
                         Text("Bid must be lower than current price.")
@@ -226,7 +283,7 @@ struct TaskScreen: View {
         }
         .onAppear(perform: {
             loadTasks()
-            loadUserBalance()
+            // No need to loadUserBalance, using solanaService directly
         })
         .onReceive(timer) { input in
             timeNow = input
@@ -235,6 +292,36 @@ struct TaskScreen: View {
         .padding(0)
         .sheet(isPresented: $showAddTaskSheet) {
             AddTaskView(tasks: $tasks, solanaService: solanaService)
+        }
+    }
+    
+    // Helper to separate USD and SOL components
+    func getPriceComponents(_ priceString: String) -> (usd: String, sol: String) {
+        // Case 1: Stored as SOL (Legacy/Default) -> "0.05 SOL"
+        if priceString.hasSuffix("SOL") {
+            let clean = priceString.replacingOccurrences(of: " SOL", with: "")
+            guard let solAmount = Double(clean) else { return (priceString, "") }
+            let usdAmount = solAmount * 189.0
+            return (String(format: "$%.2f", usdAmount), String(format: "(%.2f SOL)", solAmount))
+        }
+        
+        // Case 2: Stored as USD (New Bid) -> "$3.00"
+        let clean = priceString.replacingOccurrences(of: "$", with: "")
+        guard let usdAmount = Double(clean) else { return (priceString, "") }
+        
+        let solAmount = usdAmount / 189.0
+        return (String(format: "$%.2f", usdAmount), String(format: "(%.4f SOL)", solAmount))
+    }
+    
+    // Helper used for logic checks
+    func parsePriceToSol(_ priceString: String) -> Double {
+        if priceString.hasSuffix("SOL") {
+             let clean = priceString.replacingOccurrences(of: " SOL", with: "")
+             return Double(clean) ?? 0.0
+        } else {
+             let clean = priceString.replacingOccurrences(of: "$", with: "")
+             let usd = Double(clean) ?? 0.0
+             return usd / 189.0
         }
     }
     
@@ -260,24 +347,33 @@ struct TaskScreen: View {
     func closePopup() { withAnimation(.spring()) { selectedTask = nil } }
     
     func placeBid() {
-        guard let task = selectedTask, let bidValue = Double(bidInput),
-              let currentPrice = Double(task.price.replacingOccurrences(of: "$", with: "")) else { return }
+        guard let task = selectedTask, let bidUSD = Double(bidInput) else { return }
         
-        if bidValue < currentPrice {
-            // Update Price and set user as last bidder
-            updateTask(taskID: task.id, newPrice: bidValue, isLastBidder: true)
+        // Logic: Compare in SOL (normalized)
+        let bidSOL = bidUSD / 189.0
+        let currentPriceSOL = parsePriceToSol(task.price)
+        
+        if bidSOL < currentPriceSOL {
+            // Update Price: Store EXACT USD value input by user
+            updateTask(taskID: task.id, newPriceUSD: bidUSD, isLastBidder: true)
             
-            // Blockchain Call
-            let lamports = UInt64(bidValue * 1_000_000_000)
-            solanaService.placeBid(lamports: lamports, taskId: 101, teamId: 1) // Hardcoded IDs for demo
+            // Blockchain Call (using SOL value)
+            let lamports = UInt64(bidSOL * 1_000_000_000)
+            
+            if let paramsTaskId = task.onChainTaskId {
+                 solanaService.placeBid(lamports: lamports, taskId: paramsTaskId, teamId: 1)
+            } else {
+                 print("Error: No on-chain task ID found for this task.")
+            }
             
             closePopup()
         } else { withAnimation { showBidError = true } }
     }
     
-    func updateTask(taskID: UUID, newPrice: Double, isLastBidder: Bool) {
+    func updateTask(taskID: UUID, newPriceUSD: Double, isLastBidder: Bool) {
         if let index = tasks.firstIndex(where: { $0.id == taskID }) {
-            tasks[index].price = "$" + String(format: "%.2f", newPrice)
+            // Store exactly "$3.00"
+            tasks[index].price = String(format: "$%.2f", newPriceUSD)
             tasks[index].isUserLastBidder = isLastBidder
         }
         if let encoded = try? JSONEncoder().encode(tasks) {
@@ -351,13 +447,7 @@ struct TaskScreen: View {
         }
     }
     
-    func loadUserBalance() {
-        userBalance = UserDefaults.standard.double(forKey: "userBalance")
-        if userBalance == 0 {
-            userBalance = 1250.00 // Default balance
-            UserDefaults.standard.set(userBalance, forKey: "userBalance")
-        }
-    }
+    // Removed loadUserBalance as we use solanaService.balance now
 }
 
 // MARK: - New Better Task Row
@@ -410,14 +500,20 @@ struct TaskRow: View {
                 Spacer()
                 
                 // Price Badge
-                Text(task.price)
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
-                    .foregroundColor(.black)
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color.green)
-                    .cornerRadius(12)
-                    .shadow(color: .green.opacity(0.5), radius: 5, x: 0, y: 2)
+                let components = getPriceComponents(task.price)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(components.usd)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundColor(.black)
+                    Text(components.sol)
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundColor(.black.opacity(0.6))
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Color.green)
+                .cornerRadius(12)
+                .shadow(color: .green.opacity(0.5), radius: 5, x: 0, y: 2)
             }
             .padding(15)
             
@@ -459,6 +555,23 @@ struct TaskRow: View {
         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
     }
     
+    func getPriceComponents(_ priceString: String) -> (usd: String, sol: String) {
+        // Case 1: Stored as SOL (Legacy/Default) -> "0.05 SOL"
+        if priceString.hasSuffix("SOL") {
+            let clean = priceString.replacingOccurrences(of: " SOL", with: "")
+            guard let solAmount = Double(clean) else { return (priceString, "") }
+            let usdAmount = solAmount * 189.0
+            return (String(format: "$%.2f", usdAmount), String(format: "(%.2f SOL)", solAmount))
+        }
+        
+        // Case 2: Stored as USD (New Bid) -> "$3.00"
+        let clean = priceString.replacingOccurrences(of: "$", with: "")
+        guard let usdAmount = Double(clean) else { return (priceString, "") }
+        
+        let solAmount = usdAmount / 189.0
+        return (String(format: "$%.2f", usdAmount), String(format: "(%.4f SOL)", solAmount))
+    }
+    
     func getCountdownString(to endDate: Date) -> String {
         let calendar = Calendar.current
         if currentTime >= endDate { return "00d : 00h : 00m : 00s" }
@@ -476,6 +589,8 @@ struct AddTaskView: View {
     @State private var title = ""
     @State private var price = ""
     @State private var dueDate = Date().addingTimeInterval(86400)
+    @State private var showVaultError = false
+    @State private var isSaving = false
     
     var body: some View {
         ZStack {
@@ -493,14 +608,31 @@ struct AddTaskView: View {
                     inputGroup(title: "Task Title", placeholder: "e.g. Clean Garage", text: $title)
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Price").font(.caption).foregroundColor(.gray)
-                        TextField("0.00", text: $price)
-                            .keyboardType(.decimalPad)
-                            .onChange(of: price) { val in filterDecimalInput(val) }
-                            .padding()
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.1)))
-                            .foregroundColor(.white)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1))
+                        Text("Price (USD)").font(.caption).foregroundColor(.gray)
+                        HStack(spacing: 4) {
+                            Text("$")
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.8))
+                            
+                            TextField("0.00", text: $price)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .onChange(of: price) { val in filterDecimalInput(val) }
+                                .foregroundColor(.white)
+                        }
+                        .padding()
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.1)))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(showVaultError ? Color.red : Color.white.opacity(0.1), lineWidth: 1))
+                        
+                        if showVaultError {
+                             Text("Insufficient funds in Team Vault.")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        } else if let usd = Double(price) {
+                            Text(String(format: "≈ %.4f SOL", usd / 189.0))
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -529,15 +661,18 @@ struct AddTaskView: View {
                     }
                     
                     Button(action: { saveTask() }) {
-                        Text("Publish Task")
-                            .bold()
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(title.isEmpty || price.isEmpty ? Color.green.opacity(0.3) : Color.green)
-                            .cornerRadius(12)
+                        HStack {
+                            if isSaving { ProgressView().tint(.white) }
+                            Text(isSaving ? "Publishing..." : "Publish Task")
+                                .bold()
+                        }
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(title.isEmpty || price.isEmpty || isSaving ? Color.green.opacity(0.3) : Color.green)
+                        .cornerRadius(12)
                     }
-                    .disabled(title.isEmpty || price.isEmpty)
+                    .disabled(title.isEmpty || price.isEmpty || isSaving)
                 }
                 .padding(.bottom, 20)
             }
@@ -571,18 +706,25 @@ struct AddTaskView: View {
     }
     
     func saveTask() {
-        var finalPrice = price.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !finalPrice.hasSuffix("SOL") { finalPrice = "\(finalPrice) SOL" }
+        isSaving = true
+        let finalPriceUSD = Double(price) ?? 0.0
+        let solAmount = finalPriceUSD / 189.0
         
-        // Parse SOL amount for blockchain
-        let solString = finalPrice.replacingOccurrences(of: " SOL", with: "")
-        let solAmount = Double(solString) ?? 0.01 // Default to 0.01 if parse fails
+            // Vault Validation
+        if solAmount > solanaService.vaultBalance {
+            showVaultError = true
+            isSaving = false
+            return
+        }
+        showVaultError = false
+        
+        let formattedPrice = String(format: "$%.2f", finalPriceUSD)
         let lamports = UInt64(solAmount * 1_000_000_000)
         
         // Generate unique Task ID
         let taskId = UInt64(Date().timeIntervalSince1970)
         
-        print("🚀 Creating Task #\(taskId) for \(lamports) lamports...")
+        print("🚀 Creating Task #\(taskId) for \(lamports) lamports (\(formattedPrice))...")
         
         Task {
             // Create on blockchain (short 5s auction for demo)
@@ -590,23 +732,17 @@ struct AddTaskView: View {
             
             await MainActor.run {
                 if success {
-                    let newTask = TaskItem(title: title, price: finalPrice, biddingDate: Date(), dueDate: dueDate, onChainTaskId: taskId)
+                    let newTask = TaskItem(title: title, price: formattedPrice, biddingDate: Date(), dueDate: dueDate, onChainTaskId: taskId)
                     tasks.append(newTask)
                     if let encoded = try? JSONEncoder().encode(tasks) { UserDefaults.standard.set(encoded, forKey: "savedTasks") }
-                    
-                    // Demo: Also add to "My Tasks" so we can complete it immediately
-                    var myTasksList: [TaskItem] = []
-                    if let data = UserDefaults.standard.data(forKey: "myTasks"),
-                       let decoded = try? JSONDecoder().decode([TaskItem].self, from: data) {
-                        myTasksList = decoded
-                    }
-                    myTasksList.append(newTask)
-                    if let encoded = try? JSONEncoder().encode(myTasksList) { UserDefaults.standard.set(encoded, forKey: "myTasks") }
                     
                     dismiss()
                 } else {
                     // Start simple: just dismiss but log error (in real app, show alert)
                     print("Could not create task on chain")
+                    isSaving = false
+                    // dismiss() // Don't dismiss on failure, let user try again? or dismiss.
+                    // For now, let's keep behavior but reset state
                     dismiss()
                 }
             }

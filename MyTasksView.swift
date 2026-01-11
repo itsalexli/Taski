@@ -37,6 +37,36 @@ struct MyTasksView: View {
                     }
                     
                     Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 8) {
+                        // Wallet Badge
+                        HStack(spacing: 6) {
+                            Image(systemName: "wallet.pass.fill")
+                                .foregroundColor(.green)
+                                .font(.caption)
+                            Text(String(format: "$%.2f (%.2f SOL)", solanaService.balance * 189.0, solanaService.balance))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.green.opacity(0.3), lineWidth: 1))
+                    }
+                    
+                    // Refresh Button
+                    Button(action: {
+                        Task { await solanaService.updateBalance() }
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    }
                 }
                 .padding(.horizontal, 25)
                 .padding(.top, 10)
@@ -61,6 +91,26 @@ struct MyTasksView: View {
             }
             .blur(radius: selectedTask != nil ? 10 : 0)
             .disabled(selectedTask != nil)
+            
+            // Global Loading Overlay for Blockchain Actions (Payouts, etc.)
+            if solanaService.isProcessing {
+                ZStack {
+                    Color.black.opacity(0.4).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.white)
+                        Text(solanaService.statusMessage)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(30)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(20)
+                }
+                .zIndex(100) // Ensure it's on top
+            }
+            
             // Task Action Popup
             if let task = selectedTask {
                 Color.black.opacity(0.4)
@@ -271,10 +321,29 @@ struct MyTasksView: View {
     }
     
     func completeTask(_ task: TaskItem) {
-        // Call blockchain payout using the task's on-chain ID
-        if let onChainId = task.onChainTaskId {
-            solanaService.completeAndPayout(taskId: onChainId, teamId: 1)
+        // Safe Payout: Convert USD to SOL if needed
+        var amountToCheck = 0.01 // Default safety fallback
+        
+        let priceString = task.price
+        
+        if priceString.contains("$") {
+            // It's USD (e.g., "$3.00") -> Convert to SOL
+            let clean = priceString.replacingOccurrences(of: "$", with: "")
+            if let usd = Double(clean) {
+                amountToCheck = usd / 189.0
+            }
+        } else {
+            // It's SOL (e.g., "0.05 SOL")
+            let clean = priceString.replacingOccurrences(of: " SOL", with: "")
+            if let sol = Double(clean) {
+                amountToCheck = sol
+            }
         }
+        
+        // Final sanity check: Don't allow massive payouts from bugs
+        if amountToCheck > 5.0 { amountToCheck = 0.01 }
+        
+        solanaService.directPayout(amount: amountToCheck, teamId: 1)
         
         // Remove from myTasks
         if let index = myTasks.firstIndex(where: { $0.id == task.id }) {

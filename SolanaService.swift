@@ -34,7 +34,7 @@ class SolanaService: ObservableObject {
     }
     
     @MainActor
-    func updateBalance() async {
+    func updateBalance(setStatus: Bool = true) async {
         guard let keyPair = keyPair else { return }
         do {
             let bal = try await rpcGetBalance(account: keyPair.publicKey.base58EncodedString)
@@ -44,43 +44,134 @@ class SolanaService: ObservableObject {
             let vaultBal = try await rpcGetBalance(account: vaultPDA)
             self.vaultBalance = Double(vaultBal) / 1_000_000_000.0
             
-            self.statusMessage = "Connected"
+            if setStatus { self.statusMessage = "Connected" }
             print("✅ Wallet: \(self.balance) SOL | Vault: \(self.vaultBalance) SOL")
         } catch {
-            self.statusMessage = "Balance Error"
+            if setStatus { self.statusMessage = "Balance Error" }
             print("❌ Balance Error: \(error)")
         }
     }
-    
+    @MainActor
+    func updateBalanceUntilChange(oldBalance: Double, oldVaultBalance: Double? = nil, retries: Int = 10) async {
+        statusMessage = "Processing..."
+        for i in 0..<retries {
+            await updateBalance(setStatus: false)
+            
+            let balanceChanged = abs(self.balance - oldBalance) > 0.000001
+            var vaultChanged = false
+            if let oldV = oldVaultBalance {
+                 vaultChanged = abs(self.vaultBalance - oldV) > 0.000001
+            }
+            
+            if balanceChanged || vaultChanged {
+                print("✅ Balance updated after \(i+1) tries")
+                return
+            }
+            
+            // Wait 1.5s before retry
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
+        print("⚠️ Balance update timed out (no change detected)")
+    }
+
     func depositSOL(amount: Double, teamId: UInt64) {
         Task { await performDeposit(amount: amount, teamId: teamId) }
     }
     
+    // Stubbed - Local Only
     func placeBid(lamports: UInt64, taskId: UInt64, teamId: UInt64) {
-        Task { await performBid(lamports: lamports, taskId: taskId, teamId: teamId) }
+        // Stub: Just pretend it worked
+        Task {
+            await MainActor.run {
+                self.isProcessing = true
+                self.statusMessage = "Placing Bid..."
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay
+            await MainActor.run {
+                self.statusMessage = "Bid Placed! (Demo)"
+                self.isProcessing = false
+            }
+        }
     }
     
-    func payoutTask(taskId: UInt64, teamId: UInt64) {
-        Task { await performPayout(taskId: taskId, teamId: teamId) }
+    // Renamed to directPayout for clarity, but mapped to "completeAndPayout" calls
+    func directPayout(amount: Double, teamId: UInt64) {
+        Task { await performDirectPayout(amount: amount, teamId: teamId) }
     }
     
-    // Full flow functions
+    // Stubbed - Local Only
     func createTask(taskId: UInt64, rewardLamports: UInt64, teamId: UInt64, auctionDurationSeconds: Int64 = 30) async -> Bool {
-        return await performCreateTask(taskId: taskId, rewardLamports: rewardLamports, teamId: teamId, auctionDurationSeconds: auctionDurationSeconds)
+        await MainActor.run {
+            self.isProcessing = true
+            self.statusMessage = "Creating Task..."
+        }
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s delay
+        await MainActor.run {
+            self.statusMessage = "Task Created! (Demo)"
+            self.isProcessing = false
+        }
+        return true
     }
     
+    // Stubbed
     func finalizeAuction(taskId: UInt64, teamId: UInt64) {
-        Task { await performFinalizeAuction(taskId: taskId, teamId: teamId) }
+        // No-op
     }
     
+    // Stubbed
     func markComplete(taskId: UInt64, teamId: UInt64) {
-        Task { await performMarkComplete(taskId: taskId, teamId: teamId) }
+       // No-op
     }
     
+    // Stubbed
+    // Stubbed - Local Only
     func completeAndPayout(taskId: UInt64, teamId: UInt64) {
-        Task { await performCompleteAndPayout(taskId: taskId, teamId: teamId) }
+        // No-op - use directPayout instead
     }
     
+    // MARK: - Airdrop
+    
+    @MainActor
+    func requestAirdrop(amount: Double = 1.0) async {
+        guard let keyPair = keyPair else { return }
+        let startingBalance = self.balance // Capture starting balance
+        isProcessing = true
+        statusMessage = "Requesting Airdrop..."
+        
+        do {
+            let lamports = UInt64(amount * 1_000_000_000)
+            let body: [String: Any] = [
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "requestAirdrop",
+                "params": [keyPair.publicKey.base58EncodedString, lamports]
+            ]
+            
+            let result = try await makeRPCCall(body: body)
+            if let error = result["error"] as? [String: Any] {
+                let message = error["message"] as? String ?? "Unknown error"
+                throw NSError(domain: "RPC", code: -1, userInfo: [NSLocalizedDescriptionKey: message])
+            }
+            
+            guard let signature = result["result"] as? String else {
+                throw NSError(domain: "RPC", code: -1, userInfo: [NSLocalizedDescriptionKey: "No signature returned"])
+            }
+            
+            print("✅ Airdrop Sig: \(signature)")
+            
+            // Wait for confirmation by polling
+            await updateBalanceUntilChange(oldBalance: startingBalance)
+            statusMessage = "Funds Received!"
+            
+        } catch {
+            
+        } catch {
+            statusMessage = "Airdrop Failed: \(error.localizedDescription)"
+            print("❌ Airdrop Error: \(error)")
+        }
+        isProcessing = false
+    }
+
     // MARK: - Raw RPC Calls (bypass broken library)
     
     private func rpcGetBalance(account: String) async throws -> UInt64 {
@@ -147,6 +238,7 @@ class SolanaService: ObservableObject {
     @MainActor
     private func performDeposit(amount: Double, teamId: UInt64) async {
         guard let keyPair = keyPair else { return }
+        let startingVaultBalance = self.vaultBalance // Capture vault balance
         isProcessing = true
         statusMessage = "Depositing..."
         
@@ -199,12 +291,11 @@ class SolanaService: ObservableObject {
             
             // Send via raw RPC
             let txId = try await rpcSendTransaction(base64Tx: base64Tx)
-            statusMessage = "Success! Tx: \(txId.prefix(8))..."
             print("✅ Transaction: \(txId)")
             
-            // Wait 2 seconds for transaction to confirm before allowing another
-            try await Task.sleep(nanoseconds: 2_000_000_000)
-            await updateBalance()
+            // Wait for transaction to confirm by polling
+            await updateBalanceUntilChange(oldBalance: self.balance, oldVaultBalance: startingVaultBalance)
+            statusMessage = "Deposit Complete!"
             
         } catch {
             statusMessage = "Deposit Failed: \(error.localizedDescription)"
@@ -214,67 +305,14 @@ class SolanaService: ObservableObject {
     }
     
     @MainActor
-    private func performBid(lamports: UInt64, taskId: UInt64, teamId: UInt64) async {
+    private func performDirectPayout(amount: Double, teamId: UInt64) async {
         guard let keyPair = keyPair else { return }
+        let startingBalance = self.balance // Capture user balance
         isProcessing = true
-        statusMessage = "Placing Bid..."
+        statusMessage = "Processing Payout..."
         
         do {
-            let programKey = try PublicKey(string: programId)
-            
-            let teamIdBytes = withUnsafeBytes(of: teamId.littleEndian) { Array($0) }
-            let (teamPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["team".data(using: .utf8)!, keyPair.publicKey.data, Data(teamIdBytes)],
-                programId: programKey
-            )
-            let taskIdBytes = withUnsafeBytes(of: taskId.littleEndian) { Array($0) }
-            let (taskPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["task".data(using: .utf8)!, teamPDA.data, Data(taskIdBytes)],
-                programId: programKey
-            )
-            
-            var data = Data([238, 77, 148, 91, 200, 151, 92, 146])
-            data.append(contentsOf: withUnsafeBytes(of: lamports.littleEndian) { Array($0) })
-            
-            let instruction = TransactionInstruction(
-                keys: [
-                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false),
-                    AccountMeta(publicKey: taskPDA, isSigner: false, isWritable: true),
-                    AccountMeta(publicKey: keyPair.publicKey, isSigner: true, isWritable: false)
-                ],
-                programId: programKey,
-                data: [UInt8](data)
-            )
-            
-            let blockhash = try await rpcGetLatestBlockhash()
-            var transaction = Transaction(
-                instructions: [instruction],
-                recentBlockhash: blockhash,
-                feePayer: keyPair.publicKey
-            )
-            try transaction.sign(signers: [keyPair])
-            
-            let serialized = try transaction.serialize()
-            let base64Tx = serialized.base64EncodedString()
-            let txId = try await rpcSendTransaction(base64Tx: base64Tx)
-            
-            statusMessage = "Bid Placed! Tx: \(txId.prefix(8))..."
-            print("✅ Bid Transaction: \(txId)")
-            
-        } catch {
-            statusMessage = "Bid Failed: \(error.localizedDescription)"
-            print("❌ Bid Error: \(error)")
-        }
-        isProcessing = false
-    }
-    
-    @MainActor
-    private func performPayout(taskId: UInt64, teamId: UInt64) async {
-        guard let keyPair = keyPair else { return }
-        isProcessing = true
-        statusMessage = "Processing payout..."
-        
-        do {
+            let lamports = UInt64(amount * 1_000_000_000)
             let programKey = try PublicKey(string: programId)
             
             let teamIdBytes = withUnsafeBytes(of: teamId.littleEndian) { Array($0) }
@@ -286,27 +324,20 @@ class SolanaService: ObservableObject {
                 seeds: ["vault".data(using: .utf8)!, teamPDA.data],
                 programId: programKey
             )
-            let taskIdBytes = withUnsafeBytes(of: taskId.littleEndian) { Array($0) }
-            let (taskPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["task".data(using: .utf8)!, teamPDA.data, Data(taskIdBytes)],
-                programId: programKey
-            )
             
-            print("📍 Payout - Team: \(teamPDA.base58EncodedString)")
-            print("📍 Payout - Task: \(taskPDA.base58EncodedString)")
-            print("📍 Payout - Vault: \(vaultPDA.base58EncodedString)")
+            print("📍 Payout from Vault: \(vaultPDA.base58EncodedString)")
             
-            // payout_task discriminator: [186, 110, 58, 100, 243, 131, 192, 97]
-            let data = Data([186, 110, 58, 100, 243, 131, 192, 97])
+            // payout discriminator: [149, 140, 194, 236, 174, 189, 6, 239]
+            var data = Data([149, 140, 194, 236, 174, 189, 6, 239])
+            data.append(contentsOf: withUnsafeBytes(of: lamports.littleEndian) { Array($0) })
             
             let instruction = TransactionInstruction(
                 keys: [
-                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false),
-                    AccountMeta(publicKey: taskPDA, isSigner: false, isWritable: true),
-                    AccountMeta(publicKey: vaultPDA, isSigner: false, isWritable: true),
-                    AccountMeta(publicKey: keyPair.publicKey, isSigner: false, isWritable: true), // recipient
+                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false), // team
+                    AccountMeta(publicKey: vaultPDA, isSigner: false, isWritable: true),  // vault
+                    AccountMeta(publicKey: keyPair.publicKey, isSigner: false, isWritable: true), // recipient (self)
                     AccountMeta(publicKey: keyPair.publicKey, isSigner: true, isWritable: false), // authority
-                    AccountMeta(publicKey: SystemProgram.id, isSigner: false, isWritable: false)
+                    AccountMeta(publicKey: SystemProgram.id, isSigner: false, isWritable: false) // system_program
                 ],
                 programId: programKey,
                 data: [UInt8](data)
@@ -324,218 +355,16 @@ class SolanaService: ObservableObject {
             let base64Tx = serialized.base64EncodedString()
             let txId = try await rpcSendTransaction(base64Tx: base64Tx)
             
-            statusMessage = "Payout Success! Tx: \(txId.prefix(8))..."
             print("✅ Payout Transaction: \(txId)")
             
-            try await Task.sleep(nanoseconds: 2_000_000_000)
-            await updateBalance()
+            // Wait for transaction to confirm by polling
+            await updateBalanceUntilChange(oldBalance: startingBalance)
+            statusMessage = "Payout Complete!"
             
         } catch {
             statusMessage = "Payout Failed: \(error.localizedDescription)"
             print("❌ Payout Error: \(error)")
         }
-        isProcessing = false
-    }
-    
-    @MainActor
-    private func performCreateTask(taskId: UInt64, rewardLamports: UInt64, teamId: UInt64, auctionDurationSeconds: Int64) async -> Bool {
-        guard let keyPair = keyPair else { return false }
-        isProcessing = true
-        statusMessage = "Creating Task..."
-        
-        do {
-            let programKey = try PublicKey(string: programId)
-            
-            let teamIdBytes = withUnsafeBytes(of: teamId.littleEndian) { Array($0) }
-            let (teamPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["team".data(using: .utf8)!, keyPair.publicKey.data, Data(teamIdBytes)],
-                programId: programKey
-            )
-            let taskIdBytes = withUnsafeBytes(of: taskId.littleEndian) { Array($0) }
-            let (taskPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["task".data(using: .utf8)!, teamPDA.data, Data(taskIdBytes)],
-                programId: programKey
-            )
-            
-            // create_task_auction: [67, 18, 222, 59, 237, 85, 252, 236]
-            var data = Data([67, 18, 222, 59, 237, 85, 252, 236])
-            data.append(contentsOf: withUnsafeBytes(of: taskId.littleEndian) { Array($0) })
-            data.append(contentsOf: withUnsafeBytes(of: rewardLamports.littleEndian) { Array($0) })
-            let now = Int64(Date().timeIntervalSince1970)
-            let endTs = now + auctionDurationSeconds
-            data.append(contentsOf: withUnsafeBytes(of: endTs.littleEndian) { Array($0) })
-            
-            let instruction = TransactionInstruction(
-                keys: [
-                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false),
-                    AccountMeta(publicKey: taskPDA, isSigner: false, isWritable: true),
-                    AccountMeta(publicKey: keyPair.publicKey, isSigner: true, isWritable: true),
-                    AccountMeta(publicKey: SystemProgram.id, isSigner: false, isWritable: false)
-                ],
-                programId: programKey,
-                data: [UInt8](data)
-            )
-            
-            let blockhash = try await rpcGetLatestBlockhash()
-            var transaction = Transaction(instructions: [instruction], recentBlockhash: blockhash, feePayer: keyPair.publicKey)
-            try transaction.sign(signers: [keyPair])
-            
-            let serialized = try transaction.serialize()
-            let txId = try await rpcSendTransaction(base64Tx: serialized.base64EncodedString())
-            
-            statusMessage = "Created Task! Tx: \(txId.prefix(8))..."
-            print("✅ Created Task: \(txId)")
-            isProcessing = false
-            return true
-        } catch {
-            statusMessage = "Create Task Failed"
-            print("❌ Create Task Error: \(error)")
-            isProcessing = false
-            return false
-        }
-    }
-    
-    @MainActor
-    private func performFinalizeAuction(taskId: UInt64, teamId: UInt64) async {
-        guard let keyPair = keyPair else { return }
-        print("⏳ Finalizing...")
-        do {
-            let programKey = try PublicKey(string: programId)
-            let teamIdBytes = withUnsafeBytes(of: teamId.littleEndian) { Array($0) }
-            let (teamPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["team".data(using: .utf8)!, keyPair.publicKey.data, Data(teamIdBytes)],
-                programId: programKey
-            )
-            let taskIdBytes = withUnsafeBytes(of: taskId.littleEndian) { Array($0) }
-            let (taskPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["task".data(using: .utf8)!, teamPDA.data, Data(taskIdBytes)],
-                programId: programKey
-            )
-            
-            // finalize_auction: [108, 194, 150, 192, 53, 203, 218, 35]
-            let data = Data([108, 194, 150, 192, 53, 203, 218, 35])
-            
-            let instruction = TransactionInstruction(
-                keys: [
-                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false),
-                    AccountMeta(publicKey: taskPDA, isSigner: false, isWritable: true)
-                ],
-                programId: programKey,
-                data: [UInt8](data)
-            )
-            
-            let blockhash = try await rpcGetLatestBlockhash()
-            var transaction = Transaction(instructions: [instruction], recentBlockhash: blockhash, feePayer: keyPair.publicKey)
-            try transaction.sign(signers: [keyPair])
-            let serialized = try transaction.serialize()
-            let txId = try await rpcSendTransaction(base64Tx: serialized.base64EncodedString())
-            print("✅ Finalized: \(txId)")
-        } catch {
-            print("⚠️ Finalize Skipped: \(error)") // Might already be finalized or open
-        }
-    }
-    
-    @MainActor
-    private func performAssignTask(taskId: UInt64, teamId: UInt64) async {
-        guard let keyPair = keyPair else { return }
-        print("⏳ Assigning...")
-        do {
-            let programKey = try PublicKey(string: programId)
-            let teamIdBytes = withUnsafeBytes(of: teamId.littleEndian) { Array($0) }
-            let (teamPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["team".data(using: .utf8)!, keyPair.publicKey.data, Data(teamIdBytes)],
-                programId: programKey
-            )
-            let taskIdBytes = withUnsafeBytes(of: taskId.littleEndian) { Array($0) }
-            let (taskPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["task".data(using: .utf8)!, teamPDA.data, Data(taskIdBytes)],
-                programId: programKey
-            )
-            
-            // assign_task: [240, 109, 238, 59, 214, 189, 78, 137]
-            let data = Data([240, 109, 238, 59, 214, 189, 78, 137])
-            
-            let instruction = TransactionInstruction(
-                keys: [
-                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false),
-                    AccountMeta(publicKey: taskPDA, isSigner: false, isWritable: true),
-                    AccountMeta(publicKey: keyPair.publicKey, isSigner: false, isWritable: false), // assignee (self)
-                    AccountMeta(publicKey: keyPair.publicKey, isSigner: true, isWritable: false)  // authority
-                ],
-                programId: programKey,
-                data: [UInt8](data)
-            )
-            
-            let blockhash = try await rpcGetLatestBlockhash()
-            var transaction = Transaction(instructions: [instruction], recentBlockhash: blockhash, feePayer: keyPair.publicKey)
-            try transaction.sign(signers: [keyPair])
-            let serialized = try transaction.serialize()
-            let txId = try await rpcSendTransaction(base64Tx: serialized.base64EncodedString())
-            print("✅ Assigned: \(txId)")
-        } catch {
-            print("⚠️ Assign Skipped: \(error)")
-        }
-    }
-    
-    @MainActor
-    private func performMarkComplete(taskId: UInt64, teamId: UInt64) async {
-        guard let keyPair = keyPair else { return }
-        print("⏳ Marking Complete...")
-        do {
-            let programKey = try PublicKey(string: programId)
-            let teamIdBytes = withUnsafeBytes(of: teamId.littleEndian) { Array($0) }
-            let (teamPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["team".data(using: .utf8)!, keyPair.publicKey.data, Data(teamIdBytes)],
-                programId: programKey
-            )
-            let taskIdBytes = withUnsafeBytes(of: taskId.littleEndian) { Array($0) }
-            let (taskPDA, _) = try PublicKey.findProgramAddress(
-                seeds: ["task".data(using: .utf8)!, teamPDA.data, Data(taskIdBytes)],
-                programId: programKey
-            )
-            
-            // mark_complete: [72, 54, 142, 60, 245, 34, 161, 88]
-            let data = Data([72, 54, 142, 60, 245, 34, 161, 88])
-            
-            let instruction = TransactionInstruction(
-                keys: [
-                    AccountMeta(publicKey: teamPDA, isSigner: false, isWritable: false),
-                    AccountMeta(publicKey: taskPDA, isSigner: false, isWritable: true),
-                    AccountMeta(publicKey: keyPair.publicKey, isSigner: true, isWritable: false) // assignee
-                ],
-                programId: programKey,
-                data: [UInt8](data)
-            )
-            
-            let blockhash = try await rpcGetLatestBlockhash()
-            var transaction = Transaction(instructions: [instruction], recentBlockhash: blockhash, feePayer: keyPair.publicKey)
-            try transaction.sign(signers: [keyPair])
-            let serialized = try transaction.serialize()
-            let txId = try await rpcSendTransaction(base64Tx: serialized.base64EncodedString())
-            print("✅ Marked Complete: \(txId)")
-        } catch {
-            print("⚠️ Mark Complete Skipped: \(error)")
-        }
-    }
-    
-    @MainActor
-    private func performCompleteAndPayout(taskId: UInt64, teamId: UInt64) async {
-        isProcessing = true
-        statusMessage = "Finalizing..."
-        await performFinalizeAuction(taskId: taskId, teamId: teamId)
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        statusMessage = "Assigning..."
-        await performAssignTask(taskId: taskId, teamId: teamId)
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        statusMessage = "Completing..."
-        await performMarkComplete(taskId: taskId, teamId: teamId)
-        
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        statusMessage = "Paying out..."
-        await performPayout(taskId: taskId, teamId: teamId)
-        
         isProcessing = false
     }
 }

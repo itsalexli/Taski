@@ -8,7 +8,8 @@ struct ContentView: View {
     // Solana Service for blockchain interaction
     @StateObject private var solanaService = SolanaService()
     @State private var showDepositAlert = false
-    @State private var depositAmount: String = "0.01"
+    @State private var depositAmount: String = ""
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         ZStack {
@@ -50,8 +51,9 @@ struct ContentView: View {
                 .background(.ultraThinMaterial)
                 .overlay(Rectangle().frame(height: 0.5).foregroundColor(.white.opacity(0.2)), alignment: .top)
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom) // Prevent layout warping
             .ignoresSafeArea(edges: .bottom)
-        }
+        } // End ZStack
         .onAppear {
             loadPreviewTasks()
             loadUserBalance()
@@ -68,6 +70,14 @@ struct ContentView: View {
                 message: Text(solanaService.statusMessage),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    isInputFocused = false
+                }
+            }
         }
     }
     
@@ -87,7 +97,7 @@ struct ContentView: View {
                     Text("💳 Wallet")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(.white.opacity(0.7))
-                    Text("\(String(format: "%.6f", solanaService.balance)) SOL")
+                    Text(String(format: "$%.2f (%.2f SOL)", solanaService.balance * 189.0, solanaService.balance))
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                 }
@@ -101,7 +111,7 @@ struct ContentView: View {
                     Text("🔐 Vault")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(.white.opacity(0.7))
-                    Text("\(String(format: "%.6f", solanaService.vaultBalance)) SOL")
+                    Text(String(format: "$%.2f (%.2f SOL)", solanaService.vaultBalance * 189.0, solanaService.vaultBalance))
                         .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundColor(.green)
                 }
@@ -114,33 +124,51 @@ struct ContentView: View {
             
             // MARK: - Deposit Section
             VStack(spacing: 16) {
+                // Check if valid USD
+                let usdAmount = Double(depositAmount) ?? 0.0
+                let solEquivalent = usdAmount / 189.0
+                
                 // Amount Input
-                HStack {
-                    Text("Amount:")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.7))
-                    
-                    TextField("0.01", text: $depositAmount)
-                        .keyboardType(.decimalPad)
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .frame(width: 100)
+                VStack(spacing: 5) {
+                    HStack {
+                        Text("Amount (USD):")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                        
+                        HStack(spacing: 4) {
+                            Text("$")
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                            
+                            TextField("0.00", text: $depositAmount)
+                                .keyboardType(.decimalPad)
+                                .focused($isInputFocused)
+                                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.leading)
+                                .frame(width: 80)
+                        }
                         .padding(.vertical, 10)
                         .padding(.horizontal, 16)
                         .background(.ultraThinMaterial)
                         .cornerRadius(12)
+                    }
                     
-                    Text("SOL")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.7))
+                    // Conversion Display
+                    if usdAmount > 0 {
+                        Text(String(format: "≈ %.4f SOL", solEquivalent))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.green.opacity(0.8))
+                    }
                 }
                 
                 // Deposit Button
                 Button(action: {
-                    if let amount = Double(depositAmount), amount > 0 {
-                        solanaService.depositSOL(amount: amount, teamId: 1)
+                    if solEquivalent > 0 {
+                        solanaService.depositSOL(amount: solEquivalent, teamId: 1)
                         showDepositAlert = true
+                        depositAmount = ""
+                        isInputFocused = false
                     }
                 }) {
                     HStack(spacing: 12) {
