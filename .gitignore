@@ -6,3 +6,7 @@
 xcuserdata/
 *.xcuserdatad/
 *.xcworkspace/xcuserdata/
+
+# Secrets
+Secrets.plist
+DeltaHacks2026/Secrets.plist

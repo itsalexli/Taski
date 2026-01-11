@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab = 0 // 0: Home, 1: Tasks, 2: Add, 3: Data
     @State private var tasks: [TaskItem] = []
+    @State private var userBalance: Double = 1250.00 // Added state
     
     // Solana Service for blockchain interaction
     @StateObject private var solanaService = SolanaService()
@@ -50,10 +51,14 @@ struct ContentView: View {
             }
             .ignoresSafeArea(edges: .bottom)
         }
-        .onAppear(perform: loadPreviewTasks)
+        .onAppear {
+            loadPreviewTasks()
+            loadUserBalance()
+        }
         .onChange(of: selectedTab) { newValue in
             if newValue == 0 {
                 loadPreviewTasks() // Refresh data when switching back to Home
+                loadUserBalance()
             }
         }
         .alert(isPresented: $showDepositAlert) {
@@ -66,17 +71,44 @@ struct ContentView: View {
     }
     
     var homeView: some View {
-        VStack(spacing: 40) {
+        VStack(spacing: 30) { // Reduced spacing slightly to fit everything
             // Header Title aligned with app-wide padding
-            Text("Taski")
-                .foregroundColor(.white)
-                .font(.system(size: 50, weight: .bold, design: .rounded))
-                .padding(.top, 80)
-                .padding(.horizontal, 35)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 123)
+            HStack {
+                Spacer()
+                Text("Taski")
+                    .foregroundColor(.white)
+                    .font(.system(size: 50, weight: .bold, design: .rounded))
+                Spacer()
+            }
+            .padding(.top, 80)
+            .padding(.horizontal, 35)
             
-            Spacer()
+            // MARK: - Balance Display
+            VStack(spacing: 5) {
+                Text("Total Balance")
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.7))
+                    .textCase(.uppercase)
+                    .tracking(2)
+                    
+                    
+                
+                Text(String(format: "$%.2f", userBalance))
+                    .font(.system(size: 48, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial)
+            .cornerRadius(25)
+            .overlay(
+                RoundedRectangle(cornerRadius: 25)
+                    .stroke(LinearGradient(colors: [.white.opacity(0.2), .clear], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+            )
+            .padding(.horizontal, 35)
+            .padding(.trailing, 18)
+            .padding(.top,10)
+            
             
             // MARK: - Styled Solana Deposit Button
             VStack(spacing: 12) {
@@ -103,7 +135,6 @@ struct ContentView: View {
                     )
                     .foregroundColor(.black) // Dark text for better contrast on green
                     .cornerRadius(20)
-                    .shadow(color: .green.opacity(0.3), radius: 10, x: 0, y: 5)
                 }
                 .disabled(solanaService.isProcessing)
                 .padding(.horizontal, 35)
@@ -112,6 +143,8 @@ struct ContentView: View {
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundColor(.white.opacity(0.4))
             }
+            .padding(.leading, 4)
+            .padding(.trailing, 4)
             
             // Preview Section
             VStack(alignment: .leading, spacing: 20) {
@@ -152,6 +185,14 @@ struct ContentView: View {
         if let data = UserDefaults.standard.data(forKey: "savedTasks"),
            let decoded = try? JSONDecoder().decode([TaskItem].self, from: data) {
             tasks = decoded
+        }
+    }
+    
+    func loadUserBalance() {
+        userBalance = UserDefaults.standard.double(forKey: "userBalance")
+        if userBalance == 0 {
+            userBalance = 1250.00 // Default balance
+            UserDefaults.standard.set(userBalance, forKey: "userBalance")
         }
     }
 }
@@ -201,8 +242,11 @@ struct TaskPreviewCard: View {
             Text(task.price)
                 .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundColor(.green)
+            
+            Spacer()
         }
         .padding(16)
+        .frame(height: 120) // Enforce consistent height
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial)
         .cornerRadius(20)

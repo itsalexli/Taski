@@ -117,7 +117,6 @@ struct TaskScreen: View {
                                 Circle()
                                     .fill(LinearGradient(colors: [.green, .mint], startPoint: .topLeading, endPoint: .bottomTrailing))
                                     .frame(width: 60, height: 60)
-                                    .shadow(color: .green.opacity(0.4), radius: 10, x: 0, y: 5)
                                 
                                 Image(systemName: "plus")
                                     .font(.title2)
@@ -208,7 +207,6 @@ struct TaskScreen: View {
                                 .frame(maxWidth: .infinity)
                                 .background(LinearGradient(colors: [.green, .mint], startPoint: .leading, endPoint: .trailing))
                                 .cornerRadius(15)
-                                .shadow(color: .green.opacity(0.3), radius: 5, x: 0, y: 3)
                         }
                     }
                 }

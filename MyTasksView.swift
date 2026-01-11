@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MyTasksView: View {
+
+    // MARK: - Data State
     @State private var myTasks: [TaskItem] = []
     @State private var selectedTask: TaskItem? = nil
     @State private var userBalance: Double = 1250.00
@@ -8,24 +10,39 @@ struct MyTasksView: View {
     // Timer for countdown
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var timeNow = Date()
+    // MARK: - State
+    @State private var showCamera = false
+    @State private var inputImage: UIImage?
+    @State private var isVerifying = false
+    @State private var showVerificationError = false
+    @State private var verificationErrorMessage = ""
+    
+    // Gemini Verifier
+    private let verifier = GeminiVerifier()
     
     var body: some View {
         ZStack {
             // Background is handled by ContentView, but we add a clear ZStack to hold structure
-            VStack {
-                // Header
+            VStack(spacing: 0) {
+                // Header (Matching TaskScreen style)
                 HStack {
-                    Spacer()
-                    Text("My Tasks")
-                        .font(.headline)
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading) {
+                        Text("My Tasks")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                        Text("Active & Completed")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+                    
                     Spacer()
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 25)
                 .padding(.top, 10)
+                .padding(.bottom, 20)
                 
                 ScrollView {
-                    VStack(spacing: 15) {
+                    VStack(spacing: 20) { // Increased spacing to 20 to match TaskScreen
                         if myTasks.isEmpty {
                             Text("No tasks yet.")
                                 .foregroundColor(.white.opacity(0.5))
@@ -37,9 +54,9 @@ struct MyTasksView: View {
                             }
                         }
                     }
-                    .padding()
+                    .padding(.horizontal, 25) // Match TaskScreen padding
+                    .padding(.top, 10)
                 }
-                Spacer()
             }
             .blur(radius: selectedTask != nil ? 10 : 0)
             .disabled(selectedTask != nil)
@@ -48,7 +65,7 @@ struct MyTasksView: View {
             if let task = selectedTask {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
-                    .onTapGesture { closePopup() }
+                    .onTapGesture { if !isVerifying { closePopup() } }
                 
                 VStack(spacing: 20) {
                     // Header with title and X button
@@ -69,6 +86,7 @@ struct MyTasksView: View {
                                 .background(Color.white.opacity(0.1))
                                 .clipShape(Circle())
                         }
+                        .disabled(isVerifying)
                     }
                     
                     Divider()
@@ -96,25 +114,54 @@ struct MyTasksView: View {
                                         .stroke(Color.red, lineWidth: 2)
                                 )
                         }
+                        .disabled(isVerifying)
                         
-                        // Completed Button
-                        Button(action: { completeTask(task) }) {
-                            Text("Completed")
-                                .font(.headline)
-                                .bold()
-                                .foregroundColor(.green)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Color.green, lineWidth: 2)
-                                )
+                        // Verified Complete (Camera) Button
+                        Button(action: {
+                            showCamera = true
+                        }) {
+                            HStack {
+                                if isVerifying {
+                                    ProgressView()
+                                        .tint(.black)
+                                } else {
+                                    Image(systemName: "camera.fill")
+                                    Text("Verify & Complete")
+                                }
+                            }
+                            .font(.headline)
+                            .bold()
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green) // Solid green background for prominence
+                            .cornerRadius(10)
                         }
+                        .disabled(isVerifying)
                     }
                 }
                 .padding(25)
                 .background(RoundedRectangle(cornerRadius: 25).fill(.ultraThinMaterial))
                 .padding(.horizontal, 30)
+                .overlay(
+                    // Loading Overlay Message
+                    Group {
+                        if isVerifying {
+                            VStack(spacing: 10) {
+                                Text("Analyzing with Gemini...")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                Text("Please wait")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                            .padding(20)
+                            .background(.ultraThinMaterial)
+                            .cornerRadius(15)
+                            .offset(y: -150) // Move up so it's visible above popup
+                        }
+                    }
+                )
             }
         }
         .onAppear(perform: {
@@ -122,7 +169,51 @@ struct MyTasksView: View {
             loadUserBalance()
         })
         .onReceive(timer) { input in timeNow = input }
-        .padding()
+        .padding(0)
+        
+        // MARK: - Camera Sheet
+        .sheet(isPresented: $showCamera, onDismiss: processcapturedImage) {
+            ImagePicker(image: $inputImage, isPresented: $showCamera)
+        }
+        // MARK: - Error Alert
+        .alert("Verification Failed", isPresented: $showVerificationError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(verificationErrorMessage)
+        }
+    }
+    
+    // MARK: - Logic
+    
+    func processcapturedImage() {
+        guard let image = inputImage, let task = selectedTask else { return }
+        
+        isVerifying = true
+        
+        Task {
+            do {
+                let isVerified = try await verifier.verifyTask(title: task.title, image: image)
+                
+                await MainActor.run {
+                    isVerifying = false
+                    inputImage = nil // Reset
+                    
+                    if isVerified {
+                        completeTask(task)
+                    } else {
+                        verificationErrorMessage = "Gemini AI analyzed your photo and determined it DOES NOT verify the task: \"\(task.title)\".\n\nPlease try again with a clearer photo or manually verify with an admin."
+                        showVerificationError = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isVerifying = false
+                    inputImage = nil
+                    verificationErrorMessage = "Error connecting to AI verification: \(error.localizedDescription)"
+                    showVerificationError = true
+                }
+            }
+        }
     }
     
     func loadMyTasks() {
